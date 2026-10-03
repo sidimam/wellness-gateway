@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.8 (2026-10-03)
+- Local-only administrators (no mywellness account) can be created; the mywellness account is required only for regular users.
+
 ## v0.1.7 (2026-10-03)
 - Profiles created before 0.1.6 reload their mywellness identity (name, picture) automatically at the first refresh.
 

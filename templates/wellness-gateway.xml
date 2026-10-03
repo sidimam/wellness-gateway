@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.7)
+  <Changes>### 2026-10-03 (v0.1.8)
+- Local-only administrators without a mywellness account.
+
+### 2026-10-03 (v0.1.7)
 - Existing profiles reload name and picture from mywellness automatically.
 
 ### 2026-10-03 (v0.1.6)

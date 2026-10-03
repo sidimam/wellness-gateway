@@ -217,7 +217,7 @@ async function classes() {
 async function profilesView() {
   const admin = me.user.isAdmin;
   main.innerHTML = `<div class="card"><div class="row"><h1 style="margin:0">Utenti e account mywellness</h1>${admin ? '<button class="primary" id="newu">+ Nuovo utente</button>' : ''}</div>
-    <p class="mut">Ogni utente del gateway è una persona con il suo account Technogym mywellness: entra nell'app con nome utente e password del gateway, mentre il gateway usa l'account mywellness per prenotare. Tocca un utente per modificare tutti i suoi parametri.</p>
+    <p class="mut">Ogni utente entra nell'app con nome utente e password del gateway. Un utente normale ha il suo account Technogym mywellness e vede solo quello; un amministratore vede e gestisce tutti i profili e può anche essere solo locale, senza account mywellness. Tocca un utente per modificare tutti i suoi parametri.</p>
     <div id="m"></div><div id="ulist"></div></div>
     <div class="card"><h2>Account mywellness senza utente</h2><p class="mut">Account rimasti senza persona (per esempio dopo l'eliminazione di un utente): assegnali a un utente dalla sua finestra, oppure rimuovili.</p><div id="orph"></div></div>
     <dialog id="udlg"></dialog>`;
@@ -258,7 +258,7 @@ async function profilesView() {
         <div><label>Visibilità</label><select id="d-mv"><option value="0" ${pr.ownerUserIds && pr.ownerUserIds.length ? '' : 'selected'}>Famiglia (tutti gli utenti)</option><option value="1" ${pr.ownerUserIds && pr.ownerUserIds.length ? 'selected' : ''}>Solo questa persona</option></select></div>
         <div><label>Centro</label><input value="${esc(pr.facilityName)}" disabled></div></div>
         <p class="row"><button type="button" class="small" id="d-relogin">Rifai login mywellness</button><button type="button" class="small" id="d-unlink">Scollega account</button><button type="button" class="danger" id="d-delp">Rimuovi account</button></p>`
-      : `<p class="mut">${isNew ? 'Obbligatorio: ogni utente è una persona con il suo account mywellness.' : 'Nessun account collegato.'}</p>
+      : `<p class="mut">${isNew ? "Obbligatorio per gli utenti normali (senza account non vedrebbero nulla); facoltativo per un amministratore solo locale, che vede e gestisce tutti i profili." : 'Nessun account collegato.'}</p>
         ${orph.length && !isNew ? `<label>Assegna un account esistente</label><select id="d-orph"><option value="">— nuovo account qui sotto —</option>${orph.map(p => `<option value="${p.id}">${esc(p.label)} · ${esc(p.username)}</option>`).join('')}</select>` : ''}
         <div class="grid" id="d-newmw">
         <div><label>Email mywellness</label><input id="d-mu" autocomplete="off"></div><div><label>Password mywellness</label><input id="d-mpw" type="password" autocomplete="new-password"></div>
@@ -277,9 +277,10 @@ async function profilesView() {
         msg(m, i18n.t('Salvataggio…'), true);
         let userId = u.id;
         if (isNew) {
-          if (!$('#d-mu').value || !$('#d-mpw').value) { msg(m, i18n.t('Email e password mywellness sono obbligatorie: ogni utente è una persona con il suo account mywellness.')); return; }
+          const hasMw = $('#d-mu').value && $('#d-mpw').value;
+          if (!hasMw && $('#d-a').value !== '1') { msg(m, i18n.t('Un utente normale deve avere il suo account mywellness (altrimenti non vedrebbe nulla). Per un account solo locale scegli il ruolo Amministratore.')); return; }
           const r = await api('/users', { method: 'POST', body: { username: $('#d-u').value, displayName: $('#d-d').value, password: $('#d-p').value, isAdmin: $('#d-a').value === '1',
-            mywellness: { label: $('#d-d').value, username: $('#d-mu').value, password: $('#d-mpw').value, facilityUrl: $('#d-mf').value, maxBookings: +$('#d-mm2').value, private: $('#d-mv2').value === '1' } } });
+            mywellness: hasMw ? { label: $('#d-d').value, username: $('#d-mu').value, password: $('#d-mpw').value, facilityUrl: $('#d-mf').value, maxBookings: +$('#d-mm2').value, private: $('#d-mv2').value === '1' } : undefined } });
           if (r.profileError) { msg(m, i18n.t('Utente creato, ma profilo mywellness non aggiunto:') + ' ' + r.profileError); await load(); return; }
         } else {
           if (canEdit) {
