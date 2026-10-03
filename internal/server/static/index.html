@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wellness Gateway</title>
 <link rel="stylesheet" href="/ui/app.css">
+<script>try{var th=localStorage.getItem("wg.theme");if(th&&th!=="system")document.documentElement.dataset.theme=th;}catch(e){}</script>
 <link rel="icon" href="/ui/icon.png">
 </head>
 <body>
@@ -18,9 +19,14 @@
     <button data-view="log">Registro</button>
     <button id="logout" class="ghost">Esci</button>
   </nav>
+  <div class="row" id="prefs">
+    <select id="theme" title="Tema"><option value="system">Sistema</option><option value="light">Chiaro</option><option value="dark">Scuro</option></select>
+    <select id="lang" title="Lingua"><option value="it">Italiano</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select>
+  </div>
 </header>
 <main id="main"></main>
 <footer>Wellness Gateway · © 2026 Simone Di Mambro · MIT · <a href="https://github.com/sidimam/wellness-gateway" target="_blank" rel="noopener">GitHub</a></footer>
+<script src="/ui/i18n.js"></script>
 <script src="/ui/app.js"></script>
 </body>
 </html>

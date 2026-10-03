@@ -1,5 +1,8 @@
 :root{--teal:#0da3a6;--teal-d:#087f82;--bg:#f3f5f6;--card:#fff;--txt:#1b1f22;--mut:#6b7378;--ok:#2e9e4f;--warn:#d98500;--err:#d9372f;--line:#e2e6e8}
-@media(prefers-color-scheme:dark){:root{--bg:#121516;--card:#1c2124;--txt:#eef1f2;--mut:#9aa3a8;--line:#2b3236}}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121516;--card:#1c2124;--txt:#eef1f2;--mut:#9aa3a8;--line:#2b3236}}
+:root[data-theme=dark]{--bg:#121516;--card:#1c2124;--txt:#eef1f2;--mut:#9aa3a8;--line:#2b3236}
+:root[data-theme=dark] .badge.booked{background:#17422a;color:#9be3b3}:root[data-theme=dark] .badge.watching,:root[data-theme=dark] .badge.waitingList{background:#4a3410;color:#ffd38a}:root[data-theme=dark] .badge.failed,:root[data-theme=dark] .badge.expired,:root[data-theme=dark] .badge.cancelled{background:#4d1f1c;color:#ffb3ae}:root[data-theme=dark] .msg.err{background:#4d1f1c;color:#ffb3ae}:root[data-theme=dark] .msg.ok{background:#17422a;color:#9be3b3}
+nav select{background:transparent;border:1px solid var(--line);color:var(--txt);padding:6px 8px;border-radius:8px;font:inherit;width:auto}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
 header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700}.brand img{width:32px;height:32px;border-radius:8px}.brand small{color:var(--mut);font-weight:400}

@@ -5,6 +5,7 @@ Always-on booking engine for **Technogym mywellness** classes, packaged as a Doc
 - [Architecture](Architecture) — profiles, engine, API, app, push
 - [Installation](Installation) — Unraid template, Compose, first-run walkthrough
 - [Configuration](Configuration) — environment variables, opening rules, limits
+- [Web-UI](Web-UI) — walkthrough, pages, theme and languages
 - [API-Reference](API-Reference) — REST API used by the iOS app
 - [API-mywellness](API-mywellness) — upstream endpoints and fields
 - [Security](Security) — credentials at rest, tokens, Cloudflare

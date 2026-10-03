@@ -117,13 +117,20 @@ function loginView() {
 $('#logout').onclick = async () => { try { await api('/auth/logout', { method: 'POST' }); } catch {} token = ''; sessionStorage.removeItem('wg.token'); render(); };
 nav.querySelectorAll('button[data-view]').forEach(b => b.onclick = () => { location.hash = b.dataset.view; showView(b.dataset.view); });
 
-let viewId = 0;
+let viewId = 0, autoTimer = null;
 function showView(v) {
   viewId++;
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
   nav.querySelectorAll('button[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   ({ dashboard, classes, profiles: profilesView, settings, log }[v] || dashboard)();
 }
 const stillHere = id => id === viewId;
+/* autorefresh: ogni 20 s e quando la scheda torna visibile */
+function autoRefresh(myView, fn) {
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(() => { if (stillHere(myView) && document.visibilityState === 'visible') fn(); }, 20000);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && typeof window.__refreshNow === 'function') window.__refreshNow(); });
 const profileSelect = () => `<select id="psel" style="width:auto" title="Profilo mywellness">${profiles.map(p => `<option value="${p.id}" ${p.id === currentProfile ? 'selected' : ''}>${esc(p.label)}${p.userId === me?.user?.id ? ' (io)' : ''}</option>`).join('')}</select>`;
 const bindProfileSelect = cb => { const s = $('#psel'); if (s) s.onchange = () => { currentProfile = s.value; cb(); }; };
 const itemCard = (it, actions) => `<div class="item">${it.pictureUrl ? `<img src="${esc(it.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body">
@@ -137,7 +144,7 @@ const itemCard = (it, actions) => `<div class="item">${it.pictureUrl ? `<img src
 /* ---------- prenotazioni ---------- */
 async function dashboard() {
   if (!profiles.length) { main.innerHTML = `<div class="card"><h1>Nessun profilo</h1><p>Aggiungi un profilo mywellness da <a href="#profiles" onclick="location.hash='profiles';showView('profiles')">Profili</a>.</p></div>`; return; }
-  main.innerHTML = `<div class="card"><div class="row"><h1 style="margin:0">Prenotazioni</h1>${profileSelect()}<button class="small" id="rf">Aggiorna</button></div><div id="m"></div><div id="st" class="mut"></div></div>
+  main.innerHTML = `<div class="card"><div class="row"><h1 style="margin:0">Prenotazioni</h1>${profileSelect()}<button class="small" id="rf" title="Si aggiorna da solo ogni 20 secondi">Aggiorna</button></div><div id="m"></div><div id="st" class="mut"></div></div>
     <div class="card"><h2>Lezioni seguite</h2><div id="items" class="grid"></div></div>
     <div class="card"><h2>Prenotate su mywellness</h2><p class="mut">Tutte le prenotazioni attive del profilo, fatte dal gateway o dall'app/sito Technogym. Da qui puoi disdire.</p><div id="bk" class="grid"></div></div>
     <div class="card"><h2>Ultime attività</h2><div id="mini" class="log"></div><p><a href="#log" id="golog">Registro completo →</a></p></div>`;
@@ -160,12 +167,13 @@ async function dashboard() {
     main.querySelectorAll('[data-delrule]').forEach(b => b.onclick = async () => { await api('/items/' + encodeURIComponent(b.dataset.delrule) + '?rule=1', { method: 'DELETE' }); load(); });
     main.querySelectorAll('[data-retry]').forEach(b => b.onclick = async () => { await api('/items/' + encodeURIComponent(b.dataset.retry) + '/retry', { method: 'POST' }); load(); });
     main.querySelectorAll('[data-unbook]').forEach(b => b.onclick = async () => {
-      if (!confirm('Disdire la prenotazione su mywellness?')) return;
+      if (!confirm(i18n.t('Disdire la prenotazione su mywellness?'))) return;
       const [classId, pd] = b.dataset.unbook.split('|');
       try { await api(`/profiles/${currentProfile}/unbook`, { method: 'POST', body: { classId, partitionDate: +pd } }); msg($('#m'), 'Disdetta inviata.', true); load(true); } catch (e) { msg($('#m'), e.message); }
     });
   };
   bindProfileSelect(load); $('#rf').onclick = () => load(true); load();
+  autoRefresh(myView, () => load(false)); window.__refreshNow = () => stillHere(myView) && load(false);
 }
 
 /* ---------- lezioni ---------- */
@@ -195,6 +203,7 @@ async function classes() {
   };
   const load = async (refresh) => { msg($('#m'), ''); try { all = await api(`/profiles/${currentProfile}/classes${refresh ? '?refresh=1' : ''}`); draw(); } catch (e) { if (stillHere(myView) && $('#m')) msg($('#m'), e.message); } };
   $('#q').oninput = draw; $('#rf').onclick = () => load(true); bindProfileSelect(load); load();
+  autoRefresh(myView, () => load(false)); window.__refreshNow = () => stillHere(myView) && load(false);
 }
 
 /* ---------- profili ---------- */
@@ -211,10 +220,10 @@ async function profilesView() {
     const uname = Object.fromEntries(users.map(u => [u.id, u.displayName]));
     $('#plist').innerHTML = profiles.length ? `<table><tr><th>Etichetta</th><th>Account</th><th>Centro</th><th>Max</th><th>Attive</th><th>Login</th><th></th></tr>${profiles.map(p => `<tr><td>${esc(p.label)}${p.userId ? `<br><small class="mut">profilo di ${esc(uname[p.userId] || (p.userId === me.user.id ? me.user.displayName : 'utente'))}</small>` : ''}</td><td>${esc(p.username)}<br><small class="mut">${esc(p.displayName)}</small></td><td>${esc(p.facilityName)}</td><td>${p.maxBookings}</td><td>${p.activeBookings}</td><td>${p.lastLoginError ? `<span class="lv-error">${esc(p.lastLoginError)}</span>` : p.lastLoginAt ? `<span class="lv-success">ok ${fmtD(p.lastLoginAt)}</span>` : '—'}</td><td class="row"><button class="small" data-relogin="${p.id}">Rifai login</button><button class="danger" data-delp="${p.id}">Rimuovi</button></td></tr>`).join('')}</table>` : '<p class="mut">Nessun profilo.</p>';
     main.querySelectorAll('[data-relogin]').forEach(b => b.onclick = async () => { try { await api(`/profiles/${b.dataset.relogin}/relogin`, { method: 'POST' }); load(); } catch (e) { msg($('#m'), e.message); } });
-    main.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => { if (confirm('Rimuovere il profilo e le sue lezioni seguite?')) { await api('/profiles/' + b.dataset.delp, { method: 'DELETE' }); load(); } });
+    main.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => { if (confirm(i18n.t('Rimuovere il profilo e le sue lezioni seguite?'))) { await api('/profiles/' + b.dataset.delp, { method: 'DELETE' }); load(); } });
     if (me.user.isAdmin) {
       $('#users').innerHTML = `<table>${users.map(u => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td>${u.isAdmin ? 'admin' : 'utente'}</td><td>${u.id !== me.user.id ? `<button class="danger" data-delu="${u.id}">Elimina</button>` : ''}</td></tr>`).join('')}</table>`;
-      main.querySelectorAll('[data-delu]').forEach(b => b.onclick = async () => { if (confirm('Eliminare utente?')) { await api('/users/' + b.dataset.delu, { method: 'DELETE' }); load(); } });
+      main.querySelectorAll('[data-delu]').forEach(b => b.onclick = async () => { if (confirm(i18n.t('Eliminare utente?'))) { await api('/users/' + b.dataset.delu, { method: 'DELETE' }); load(); } });
       $('#addu').onclick = async () => {
         try {
           msg($('#um'), 'Creazione in corso…', true);
@@ -285,6 +294,7 @@ async function log() {
     $('#loglist').innerHTML = lines.map(l => `<div><span class="mut">${fmtD(l.time)}</span> <span class="lv-${l.level}">●</span> ${l.profileId ? `<b>${esc(names[l.profileId] || '')}</b> ` : ''}${esc(l.text)}</div>`).join('') || '<p class="mut">Nessuna attività.</p>';
   };
   $('#lsel').onchange = load; $('#llev').onchange = load; $('#rf').onclick = load; load();
+  autoRefresh(myView, load); window.__refreshNow = () => stillHere(myView) && load();
 }
 
 render();

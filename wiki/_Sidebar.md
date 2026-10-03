@@ -3,6 +3,7 @@
 - [Architecture](Architecture)
 - [Installation](Installation)
 - [Configuration](Configuration)
+- [Web-UI](Web-UI)
 - [API-Reference](API-Reference)
 - [API-mywellness](API-mywellness)
 - [Security](Security)

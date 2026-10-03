@@ -22,6 +22,7 @@
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
   <Changes>### 2026-10-03 (v0.1.1)
+- Web UI: light/dark/system theme and language selector (it, en, es, fr, de); bookings, classes and log pages refresh automatically every 20 s and when the tab becomes visible.
 - Users can own their mywellness profile (created together with the user or linked later); the app and the web UI default to the signed-in person's profile.
 - Every web section is per profile (selector always visible), activity log card on the bookings page, log filters by profile and level, rules table with "classes matched" preview, fixed a JS error when switching views while loading.
 
