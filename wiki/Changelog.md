@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6 (2026-10-03)
+- Visibility: non-admin users see only their own profile (and profiles explicitly shared with them); administrators see every profile and can switch between them in the app and the web UI.
+- Profile identity from mywellness (`firstName`, `lastName`, `nickName`, `email`, `pictureUrl`, `thumbUrl`) stored at login and exposed in `GET /profiles`; avatars in the web UI.
+
 ## v0.1.5 (2026-10-03)
 - Recurrences attach only occurrences on or after the chosen class.
 - Users: per-user dialog (gateway access, role, mywellness account with link/re-login/unlink/remove, assign an orphan account); role changes and deletion allowed for any admin as long as one admin remains; deleting a user keeps their mywellness account as orphan.

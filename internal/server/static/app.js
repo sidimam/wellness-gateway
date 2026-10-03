@@ -6,6 +6,7 @@ let me = null, profiles = [], currentProfile = '';
 const fmtD = d => new Date(d).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const fmtT = d => new Date(d).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const avatar = (pr, name, size = 32) => pr && (pr.thumbUrl || pr.pictureUrl) ? `<img class="avatar" src="${esc(pr.thumbUrl || pr.pictureUrl)}" alt="" style="width:${size}px;height:${size}px">` : `<span class="avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size / 2.4)}px">${esc((name || '?').trim().slice(0, 1).toUpperCase())}</span>`;
 const STATE = { pending: 'In attesa', bursting: 'Prenotazione in corso', watching: 'Osservazione: piena', waitingList: "Lista d'attesa", booked: 'Prenotata', failed: 'Errore', expired: 'Scaduta', cancelled: 'Disdetta' };
 
 async function api(path, opts = {}) {
@@ -131,7 +132,7 @@ function autoRefresh(myView, fn) {
   autoTimer = setInterval(() => { if (stillHere(myView) && document.visibilityState === 'visible') fn(); }, 20000);
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && typeof window.__refreshNow === 'function') window.__refreshNow(); });
-const profileSelect = () => `<select id="psel" style="width:auto" title="Profilo mywellness">${profiles.map(p => `<option value="${p.id}" ${p.id === currentProfile ? 'selected' : ''}>${esc(p.label)}${p.userId === me?.user?.id ? ' (io)' : ''}</option>`).join('')}</select>`;
+const profileSelect = () => `${avatar(profiles.find(p => p.id === currentProfile), '', 28)}<select id="psel" style="width:auto" title="Profilo mywellness">${profiles.map(p => `<option value="${p.id}" ${p.id === currentProfile ? 'selected' : ''}>${esc(p.label)}${p.userId === me?.user?.id ? ' (io)' : ''}</option>`).join('')}</select>`;
 const bindProfileSelect = cb => { const s = $('#psel'); if (s) s.onchange = () => { currentProfile = s.value; cb(); }; };
 const itemCard = (it, actions) => `<div class="item">${it.pictureUrl ? `<img src="${esc(it.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body">
   <div class="title">${esc(it.name)} ${it.recurring ? '🔁' : ''} <span class="badge ${esc(it.state)}">${STATE[it.state] || it.state}</span></div>
@@ -224,7 +225,7 @@ async function profilesView() {
   const load = async () => {
     profiles = await api('/profiles');
     users = admin ? await api('/users') : [me.user];
-    $('#ulist').innerHTML = `<table><tr><th>Nome utente</th><th>Nome</th><th>Ruolo</th><th>Account mywellness</th><th>Centro</th><th>Attive</th><th>Login mywellness</th></tr>${users.map(u => { const pr = profiles.find(p => p.userId === u.id); return `<tr class="urow" data-u="${u.id}" style="cursor:pointer"><td><b>${esc(u.username)}</b></td><td>${esc(u.displayName)}</td><td>${u.isAdmin ? '<span class="badge bursting">admin</span>' : '<span class="badge">utente</span>'}</td>
+    $('#ulist').innerHTML = `<table><tr><th>Nome utente</th><th>Nome</th><th>Ruolo</th><th>Account mywellness</th><th>Centro</th><th>Attive</th><th>Login mywellness</th></tr>${users.map(u => { const pr = profiles.find(p => p.userId === u.id); return `<tr class="urow" data-u="${u.id}" style="cursor:pointer"><td><div class="row" style="gap:8px">${avatar(pr, u.displayName)}<b>${esc(u.username)}</b></div></td><td>${esc(u.displayName)}${pr && pr.displayName ? `<br><small class="mut">${esc(pr.displayName)}${pr.nickName ? ' · ' + esc(pr.nickName) : ''}</small>` : ''}</td><td>${u.isAdmin ? '<span class="badge bursting">admin</span>' : '<span class="badge">utente</span>'}</td>
       <td>${pr ? `${esc(pr.username)}${pr.ownerUserIds && pr.ownerUserIds.length ? ' 🔒' : ''}` : '<span class="badge failed">nessuno</span>'}</td><td>${pr ? esc(pr.facilityName) : ''}</td><td>${pr ? `${pr.activeBookings}/${pr.maxBookings}` : ''}</td>
       <td>${pr ? (pr.lastLoginError ? `<span class="lv-error">${esc(pr.lastLoginError)}</span>` : pr.lastLoginAt ? `<span class="lv-success">ok ${fmtD(pr.lastLoginAt)}</span>` : '—') : ''}</td></tr>`; }).join('')}</table>`;
     main.querySelectorAll('.urow').forEach(r => r.onclick = () => openUser(users.find(u => u.id === r.dataset.u)));
@@ -241,7 +242,7 @@ async function profilesView() {
     const orph = profiles.filter(p => !p.userId);
     const canEdit = admin || (!isNew && u.id === me.user.id);
     const dlg = $('#udlg');
-    dlg.innerHTML = `<form method="dialog" class="dlg"><h2>${isNew ? 'Nuovo utente' : esc(u.displayName || u.username)}</h2>
+    dlg.innerHTML = `<form method="dialog" class="dlg"><div class="row" style="gap:12px">${isNew ? '' : avatar(pr, u.displayName, 56)}<div><h2 style="margin:0">${isNew ? 'Nuovo utente' : esc(u.displayName || u.username)}</h2>${pr ? `<small class="mut">${esc(pr.displayName || '')}${pr.email ? ' · ' + esc(pr.email) : ''}</small>` : ''}</div></div>
       <h3>Accesso al gateway</h3><div class="grid">
         <div><label>Nome utente (per entrare)</label><input id="d-u" value="${esc(u.username)}" autocomplete="off" ${canEdit ? '' : 'disabled'}></div>
         <div><label>Nome</label><input id="d-d" value="${esc(u.displayName)}" ${canEdit ? '' : 'disabled'}></div>

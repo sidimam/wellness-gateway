@@ -33,6 +33,12 @@ type Profile struct {
 	Token          string     `json:"-"`
 	MWUserID       string     `json:"-"`
 	DisplayName    string     `json:"displayName"`
+	FirstName      string     `json:"firstName,omitempty"`
+	LastName       string     `json:"lastName,omitempty"`
+	NickName       string     `json:"nickName,omitempty"`
+	Email          string     `json:"email,omitempty"`
+	PictureURL     string     `json:"pictureUrl,omitempty"`
+	ThumbURL       string     `json:"thumbUrl,omitempty"`
 	FacilityURL    string     `json:"facilityUrl"`
 	FacilityID     string     `json:"facilityId"`
 	FacilityName   string     `json:"facilityName"`

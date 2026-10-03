@@ -246,6 +246,8 @@ func (e *Engine) Session(ctx context.Context, profileID string, force bool) (*my
 				st.Profiles[i].Token = res.Session.Token
 				st.Profiles[i].MWUserID = res.Session.UserID
 				st.Profiles[i].DisplayName = res.DisplayName
+				st.Profiles[i].FirstName, st.Profiles[i].LastName, st.Profiles[i].NickName = res.FirstName, res.LastName, res.NickName
+				st.Profiles[i].Email, st.Profiles[i].PictureURL, st.Profiles[i].ThumbURL = res.Email, res.PictureURL, res.ThumbURL
 				st.Profiles[i].LastLoginAt = &now
 				st.Profiles[i].LastLoginErr = ""
 			}
@@ -829,9 +831,10 @@ func (e *Engine) TestNotification(userID string) int {
 	return len(tokens)
 }
 
-// Visible indica se l'utente può vedere il profilo.
+// Visible indica se l'utente può vedere il profilo: gli amministratori vedono tutti,
+// gli altri utenti solo il proprio profilo (e quelli esplicitamente condivisi con loro).
 func Visible(p model.Profile, userID string, isAdmin bool) bool {
-	return isAdmin || len(p.OwnerUserIDs) == 0 || contains(p.OwnerUserIDs, userID)
+	return isAdmin || p.UserID == userID || contains(p.OwnerUserIDs, userID)
 }
 
 // Normalize ripulisce le impostazioni ricevute dall'API.

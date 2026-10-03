@@ -521,6 +521,7 @@ func (s *Server) createProfile(ctx context.Context, in profileInput, by model.Us
 	now := time.Now()
 	pr := model.Profile{ID: store.NewID(), Label: in.Label, Username: strings.TrimSpace(in.Username), PasswordEnc: enc,
 		Token: res.Session.Token, MWUserID: res.Session.UserID, DisplayName: res.DisplayName, UserID: owner,
+		FirstName: res.FirstName, LastName: res.LastName, NickName: res.NickName, Email: res.Email, PictureURL: res.PictureURL, ThumbURL: res.ThumbURL,
 		FacilityURL: fac.URL, FacilityID: fac.ID, FacilityName: fac.Name, MaxBookings: in.MaxBookings, LastLoginAt: &now}
 	if pr.Label == "" {
 		pr.Label = res.DisplayName

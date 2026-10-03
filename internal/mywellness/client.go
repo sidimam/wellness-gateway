@@ -130,10 +130,16 @@ func errorsIn(data []byte) []apiErr {
 	return nil
 }
 
-// LoginResult è l'esito del login.
+// LoginResult è l'esito del login, con i dati del profilo mywellness.
 type LoginResult struct {
 	Session     Session
 	DisplayName string
+	FirstName   string
+	LastName    string
+	NickName    string
+	Email       string
+	PictureURL  string
+	ThumbURL    string
 }
 
 // Login autentica con email/username e password.
@@ -147,10 +153,13 @@ func (c *Client) Login(ctx context.Context, username, password string) (*LoginRe
 		Result      string `json:"result"`
 		Token       string `json:"token"`
 		UserContext *struct {
-			ID        json.RawMessage `json:"id"`
-			FirstName string          `json:"firstName"`
-			LastName  string          `json:"lastName"`
-			NickName  string          `json:"nickName"`
+			ID              json.RawMessage `json:"id"`
+			FirstName       string          `json:"firstName"`
+			LastName        string          `json:"lastName"`
+			NickName        string          `json:"nickName"`
+			Email           string          `json:"email"`
+			PictureURL      string          `json:"pictureUrl"`
+			ThumbPictureURL string          `json:"thumbPictureUrl"`
 		} `json:"userContext"`
 		AccountLockedInfo *struct {
 			BlockedFor int `json:"blockedFor"`
@@ -190,7 +199,11 @@ func (c *Client) Login(ctx context.Context, username, password string) (*LoginRe
 	if name == "" {
 		name = username
 	}
-	return &LoginResult{Session: Session{Token: token, UserID: id}, DisplayName: name}, nil
+	uc := out.UserContext
+	pic := strings.Replace(uc.PictureURL, "http://", "https://", 1)
+	thumb := strings.Replace(uc.ThumbPictureURL, "http://", "https://", 1)
+	return &LoginResult{Session: Session{Token: token, UserID: id}, DisplayName: name, FirstName: uc.FirstName, LastName: uc.LastName,
+		NickName: uc.NickName, Email: uc.Email, PictureURL: pic, ThumbURL: thumb}, nil
 }
 
 func joinErrs(errs []apiErr) string {
