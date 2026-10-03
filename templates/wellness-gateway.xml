@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.6)
+  <Changes>### 2026-10-03 (v0.1.7)
+- Existing profiles reload name and picture from mywellness automatically.
+
+### 2026-10-03 (v0.1.6)
 - Non-admin users see only their own profile; administrators see all.
 - Profiles carry the mywellness identity (first/last name, nickname, e-mail, profile picture) read at login; avatars in the web UI and in the iOS app.
 

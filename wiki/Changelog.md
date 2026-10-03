@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.7 (2026-10-03)
+- Profiles created before 0.1.6 reload their mywellness identity (name, picture) automatically at the first refresh.
+
 ## v0.1.6 (2026-10-03)
 - Visibility: non-admin users see only their own profile (and profiles explicitly shared with them); administrators see every profile and can switch between them in the app and the web UI.
 - Profile identity from mywellness (`firstName`, `lastName`, `nickName`, `email`, `pictureUrl`, `thumbUrl`) stored at login and exposed in `GET /profiles`; avatars in the web UI.

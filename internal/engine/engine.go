@@ -304,6 +304,10 @@ func (e *Engine) RefreshAll(ctx context.Context) {
 		}
 	})
 	for _, id := range ids {
+		// profili creati prima della v0.1.6: ricarica l'identità mywellness (nome, foto) con un nuovo login
+		if p, ok := e.profile(id); ok && p.FirstName == "" && p.PictureURL == "" && p.LastLoginAt != nil {
+			_, _ = e.Session(ctx, id, true)
+		}
 		if _, err := e.Calendar(ctx, id, true); err != nil {
 			e.logf("warn", id, "aggiornamento calendario fallito: %v", err)
 		}
