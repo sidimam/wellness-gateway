@@ -161,11 +161,17 @@ async function dashboard() {
     $('#items').innerHTML = items.length ? items.map(it => itemCard(it, `
       ${it.state === 'failed' ? `<button class="small" data-retry="${it.id}">Riprova</button>` : ''}
       ${it.state === 'booked' ? `<button class="danger" data-unbook="${it.classId}|${it.partitionDate}">Disdici</button>` : ''}
+      ${it.state === 'waitingList' ? `<button class="danger" data-leave="${it.classId}|${it.partitionDate}">Esci dalla lista d'attesa</button>` : ''}
       <button class="small" data-del="${it.id}">Rimuovi</button>${it.recurring ? `<button class="small" data-delrule="${it.id}">Stop ricorrenza</button>` : ''}`)).join('') : '<p class="mut">Nessuna lezione seguita: vai in Lezioni.</p>';
     $('#bk').innerHTML = bookings.length ? bookings.map(b => itemCard({ ...b, name: b.name, room: b.room, trainer: b.assignedTo, state: 'booked', lastMessage: b.tracked ? 'Prenotata dal gateway' : 'Prenotata da mywellness (app/web)' }, `<button class="danger" data-unbook="${b.id}|${b.partitionDate}">Disdici</button>`)).join('') : '<p class="mut">Nessuna prenotazione attiva.</p>';
     main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { await api('/items/' + encodeURIComponent(b.dataset.del), { method: 'DELETE' }); load(); });
     main.querySelectorAll('[data-delrule]').forEach(b => b.onclick = async () => { await api('/items/' + encodeURIComponent(b.dataset.delrule) + '?rule=1', { method: 'DELETE' }); load(); });
     main.querySelectorAll('[data-retry]').forEach(b => b.onclick = async () => { await api('/items/' + encodeURIComponent(b.dataset.retry) + '/retry', { method: 'POST' }); load(); });
+    main.querySelectorAll('[data-leave]').forEach(b => b.onclick = async () => {
+      if (!confirm(i18n.t("Uscire dalla lista d'attesa su mywellness? La lezione non verrà più seguita."))) return;
+      const [classId, pd] = b.dataset.leave.split('|');
+      try { await api(`/profiles/${currentProfile}/leave-waiting-list`, { method: 'POST', body: { classId, partitionDate: +pd, removeItem: true } }); msg($('#m'), i18n.t("Uscita dalla lista d'attesa."), true); load(true); } catch (e) { msg($('#m'), e.message); }
+    });
     main.querySelectorAll('[data-unbook]').forEach(b => b.onclick = async () => {
       if (!confirm(i18n.t('Disdire la prenotazione su mywellness?'))) return;
       const [classId, pd] = b.dataset.unbook.split('|');

@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.3)
+  <Changes>### 2026-10-03 (v0.1.4)
+- Leave the mywellness waiting list (`POST /profiles/{id}/leave-waiting-list`, button on waiting-list items); Unbook results handled (TooLate → clear message); outline eye icon on password fields.
+
+### 2026-10-03 (v0.1.3)
 - "Utenti e account mywellness": one page, one form — a gateway user always has their mywellness account (email/password required); edit button on every profile (label, mywellness password, max bookings, visibility, owner); link an account to an existing user.
 
 ### 2026-10-03 (v0.1.2)

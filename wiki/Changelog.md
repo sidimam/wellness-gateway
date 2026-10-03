@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.4 (2026-10-03)
+- Leave the mywellness waiting list from the gateway (`POST /profiles/{id}/leave-waiting-list` `{classId, partitionDate, removeItem}` → item becomes `cancelled`); Unbook result codes handled (`TooLate` = less than 2 hours before, `BookingNotAvailable`); outline eye icon on password fields.
+
 ## v0.1.3 (2026-10-03)
 - Web UI: "Utenti e account mywellness" merges users and profiles: adding a user requires their mywellness email/password and creates the person's profile; every profile has *Modifica* (label, mywellness password, max bookings, visibility, owner user); link an account to an existing user.
 

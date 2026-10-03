@@ -111,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/profiles/{id}/classes", auth(s.classes))
 	mux.HandleFunc("GET /api/v1/profiles/{id}/bookings", auth(s.bookings))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/unbook", auth(s.unbook))
+	mux.HandleFunc("POST /api/v1/profiles/{id}/leave-waiting-list", auth(s.leaveWaitingList))
 
 	mux.HandleFunc("GET /api/v1/items", auth(s.listItems))
 	mux.HandleFunc("POST /api/v1/items", auth(s.addItem))
@@ -766,6 +767,31 @@ func (s *Server) unbook(w http.ResponseWriter, r *http.Request, p principal) {
 	if err := s.Engine.Unbook(r.Context(), id, in.ClassID, in.PartitionDate, p.user.Username); err != nil {
 		writeErr(w, 502, err.Error())
 		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) leaveWaitingList(w http.ResponseWriter, r *http.Request, p principal) {
+	id := r.PathValue("id")
+	if _, ok := s.visibleProfile(p, id); !ok {
+		writeErr(w, 404, "profilo non trovato")
+		return
+	}
+	var in struct {
+		ClassID       string
+		PartitionDate int
+		RemoveItem    bool
+	}
+	if err := decode(r, &in); err != nil || in.ClassID == "" || in.PartitionDate == 0 {
+		writeErr(w, 400, "classId e partitionDate obbligatori")
+		return
+	}
+	if err := s.Engine.LeaveWaitingList(r.Context(), id, in.ClassID, in.PartitionDate, p.user.Username); err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	if in.RemoveItem {
+		s.Engine.RemoveItem(id+"|"+in.ClassID+"|"+strconv.Itoa(in.PartitionDate), false)
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

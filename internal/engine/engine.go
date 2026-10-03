@@ -544,6 +544,40 @@ func (e *Engine) Unbook(ctx context.Context, profileID, classID string, partitio
 	return nil
 }
 
+// LeaveWaitingList esce dalla lista d'attesa su mywellness e segna l'item come disdetto.
+func (e *Engine) LeaveWaitingList(ctx context.Context, profileID, classID string, partitionDate int, by string) error {
+	sess, err := e.Session(ctx, profileID, false)
+	if err != nil {
+		return err
+	}
+	if err := e.MW.LeaveWaitingList(ctx, sess, classID, partitionDate); err != nil {
+		if errors.Is(err, mywellness.ErrUnauthorized) {
+			if sess, err = e.Session(ctx, profileID, true); err == nil {
+				err = e.MW.LeaveWaitingList(ctx, sess, classID, partitionDate)
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	id := profileID + "|" + classID + "|" + itoa(partitionDate)
+	name := classID
+	if it, ok := e.item(id); ok {
+		name = it.Name + " " + fmtTime(it.Start)
+		e.setItem(id, func(x *model.Item) {
+			x.State = model.StateCancelled
+			x.LastMessage = "Uscita dalla lista d'attesa (" + by + ")"
+		})
+		delete(e.nextPoll, id)
+	}
+	e.logf("warn", profileID, "uscita dalla lista d'attesa (%s): %s", by, name)
+	e.mu.Lock()
+	delete(e.calendars, profileID)
+	e.mu.Unlock()
+	e.Kick()
+	return nil
+}
+
 func (e *Engine) limitReached(profileID string) (bool, int, int) {
 	var active, maxB int
 	e.Store.Read(func(st *model.State) {

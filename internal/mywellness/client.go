@@ -22,6 +22,7 @@ const (
 	Culture    = "it-IT"
 	coreURL    = "https://core.mywellness.com"
 	calURL     = "https://calendar.mywellness.com"
+	svcURL     = "https://services.mywellness.com"
 )
 
 // Rome è il fuso del centro.
@@ -396,7 +397,7 @@ func (c *Client) Book(ctx context.Context, sess *Session, classID string, partit
 	}
 }
 
-// Unbook cancella una prenotazione.
+// Unbook cancella una prenotazione. Esiti del server: UnBooked, TooLate, BookingNotAvailable, EventNotExists, UserNotExists, Failed.
 func (c *Client) Unbook(ctx context.Context, sess *Session, classID string, partitionDate int) error {
 	body := map[string]any{"partitionDate": partitionDate, "userId": sess.UserID, "classId": classID}
 	data, resp, err := c.do(ctx, http.MethodPost, calURL, "/v2/enduser/class/Unbook", nil, body, sess)
@@ -412,5 +413,50 @@ func (c *Client) Unbook(ctx context.Context, sess *Session, classID string, part
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{Status: resp.StatusCode, Message: "disdetta rifiutata"}
 	}
-	return nil
+	var out struct {
+		Result  string `json:"result"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(data, &out)
+	switch out.Result {
+	case "", "UnBooked":
+		return nil
+	case "TooLate":
+		return &APIError{Status: 409, Message: "troppo tardi per disdire (la cancellazione è consentita fino a 2 ore prima)"}
+	case "BookingNotAvailable":
+		return &APIError{Status: 409, Message: "disdetta non disponibile per questa lezione"}
+	default:
+		return &APIError{Status: 409, Message: "disdetta rifiutata: " + strings.TrimSpace(out.Result+" "+out.Message)}
+	}
+}
+
+// LeaveWaitingList esce dalla lista d'attesa. Esiti: Removed, UserNotInWaitingList, Failed.
+func (c *Client) LeaveWaitingList(ctx context.Context, sess *Session, classID string, partitionDate int) error {
+	body := map[string]any{"partitionDate": fmt.Sprint(partitionDate), "userId": sess.UserID}
+	data, resp, err := c.do(ctx, http.MethodPost, svcURL, "/core/calendarevent/"+classID+"/RemoveFromWaitingList", nil, body, sess)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
+	}
+	if errs := errorsIn(data); len(errs) > 0 {
+		return &APIError{Status: resp.StatusCode, Message: joinErrs(errs)}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &APIError{Status: resp.StatusCode, Message: "uscita dalla lista d'attesa rifiutata"}
+	}
+	var wrapped struct {
+		Data json.RawMessage `json:"data"`
+	}
+	raw := strings.Trim(string(data), "\" \n")
+	if json.Unmarshal(data, &wrapped) == nil && len(wrapped.Data) > 0 {
+		raw = strings.Trim(string(wrapped.Data), "\"")
+	}
+	switch raw {
+	case "Removed", "UserNotInWaitingList", "":
+		return nil
+	default:
+		return &APIError{Status: 409, Message: "uscita dalla lista d'attesa fallita: " + raw}
+	}
 }

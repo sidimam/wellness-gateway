@@ -131,6 +131,9 @@
     'Email e password mywellness sono obbligatorie: ogni utente è una persona con il suo account mywellness.': ['mywellness email and password are required: each user is a person with their own mywellness account.', 'El correo y la contraseña de mywellness son obligatorios: cada usuario es una persona con su cuenta mywellness.', 'E-mail et mot de passe mywellness sont obligatoires : chaque utilisateur est une personne avec son compte mywellness.', 'mywellness-E-Mail und -Passwort sind Pflicht: jeder Benutzer ist eine Person mit eigenem mywellness-Konto.'],
     'Utente creato, ma profilo mywellness non aggiunto:': ['User created, but the mywellness profile was not added:', 'Usuario creado, pero el perfil mywellness no se añadió:', 'Utilisateur créé, mais le profil mywellness n\'a pas été ajouté :', 'Benutzer erstellt, aber mywellness-Profil nicht hinzugefügt:'],
     'Utente e profilo mywellness creati.': ['User and mywellness profile created.', 'Usuario y perfil mywellness creados.', 'Utilisateur et profil mywellness créés.', 'Benutzer und mywellness-Profil erstellt.'],
+    "Esci dalla lista d'attesa": ['Leave the waiting list', 'Salir de la lista de espera', 'Quitter la liste d\'attente', 'Warteliste verlassen'],
+    "Uscire dalla lista d'attesa su mywellness? La lezione non verrà più seguita.": ['Leave the waiting list on mywellness? The class will no longer be tracked.', '¿Salir de la lista de espera en mywellness? La clase dejará de seguirse.', 'Quitter la liste d\'attente sur mywellness ? Le cours ne sera plus suivi.', 'Warteliste auf mywellness verlassen? Der Kurs wird nicht mehr verfolgt.'],
+    "Uscita dalla lista d'attesa.": ['Left the waiting list.', 'Has salido de la lista de espera.', 'Liste d\'attente quittée.', 'Warteliste verlassen.'],
     'Nessun profilo': ['No profiles', 'Ningún perfil', 'Aucun profil', 'Keine Profile'],
     'Rimuovere il profilo e le sue lezioni seguite?': ['Remove the profile and its tracked classes?', '¿Eliminar el perfil y sus clases seguidas?', 'Supprimer le profil et ses cours suivis ?', 'Profil und seine verfolgten Kurse entfernen?'],
     'Eliminare utente?': ['Delete user?', '¿Eliminar usuario?', 'Supprimer l\'utilisateur ?', 'Benutzer löschen?'],
@@ -190,8 +193,10 @@
       inp.dataset.eye = '1';
       const wrap = document.createElement('div'); wrap.className = 'pw';
       inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.title = tr('Mostra password'); b.textContent = '👁';
-      b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.textContent = show ? '🙈' : '👁'; b.title = tr(show ? 'Nascondi password' : 'Mostra password'); };
+      const EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.title = tr('Mostra password'); b.innerHTML = EYE; b.setAttribute('aria-label', tr('Mostra password'));
+      b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.innerHTML = show ? EYE_OFF : EYE; b.title = tr(show ? 'Nascondi password' : 'Mostra password'); };
       wrap.appendChild(b);
     });
   }

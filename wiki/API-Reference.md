@@ -15,7 +15,8 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 - `PUT /profiles/{id}` `{label?, password?, maxBookings?, private?}`, `DELETE /profiles/{id}`, `POST /profiles/{id}/relogin`
 - `GET /profiles/{id}/classes?q=&refresh=1` → schedule for the next *daysAhead* days: upstream fields plus `start`, `end`, `opensOn`, `tracked` (item, if any)
 - `GET /profiles/{id}/bookings?refresh=1` → future classes with `isParticipant=true` (booked by the gateway **or** on mywellness)
-- `POST /profiles/{id}/unbook` `{classId, partitionDate}` → cancels on mywellness; a tracked item becomes `cancelled`
+- `POST /profiles/{id}/unbook` `{classId, partitionDate}` → cancels on mywellness (409 with a message when too late, i.e. less than 2 hours before); a tracked item becomes `cancelled`
+- `POST /profiles/{id}/leave-waiting-list` `{classId, partitionDate, removeItem}` → leaves the mywellness waiting list; the tracked item becomes `cancelled` (or is removed with `removeItem: true`)
 
 ## Items (tracked classes)
 - `GET /items?profile=` ; `POST /items` `{profileId, classId, partitionDate, recurring}` ; `DELETE /items/{id}?rule=1` (also stop the weekly rule) ; `POST /items/{id}/retry`

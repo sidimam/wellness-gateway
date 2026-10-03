@@ -8,7 +8,8 @@ Headers on every call: `X-MWAPPS-APPID: EC1D38D7-D359-48D0-A60C-D8C0B8FB9DF9`, `
 | Club | `GET https://core.mywellness.com/v2/enduser/facility/detail?facilityUrl=…` | `id`, `name` |
 | Schedule | `GET https://calendar.mywellness.com/v2/enduser/class/Search?eventTypes=Class&facilityId=…&fromDate=YYYY-MM-DD&toDate=…` | public; with token `isParticipant`, `isInWaitingList`, `waitingListPosition` |
 | Book | `POST https://calendar.mywellness.com/v2/enduser/class/Book` `{partitionDate:YYYYMMDD,userId,classId,station:null}` | `result` ∈ `Booked`, `UserAddedToWaitingList`, `PlaceNotAvailable`, `ToMuchParticipants`, `Failed` |
-| Unbook | `POST https://calendar.mywellness.com/v2/enduser/class/Unbook` | same body |
+| Unbook | `POST https://calendar.mywellness.com/v2/enduser/class/Unbook` | same body; `result` ∈ `UnBooked`, `TooLate`, `BookingNotAvailable`, `EventNotExists`, `UserNotExists`, `Failed` |
+| Leave waiting list | `POST https://services.mywellness.com/core/calendarevent/{classId}/RemoveFromWaitingList` `{partitionDate:"YYYYMMDD",userId}` | `data` ∈ `Removed`, `UserNotInWaitingList`, `Failed` |
 
 Useful class fields: `id`, `partitionDate`, `startDate`, `name`, `room`, `assignedTo`, `pictureUrl`, `maxParticipants`, `numberOfParticipants`, `availablePlaces`, `isParticipant`, `isInWaitingList`, `bookingInfo.bookingOpensOn`, `bookingInfo.bookingAvailable`, `bookingInfo.cancellationMinutesInAdvance` (120), `bookingInfo.bookingCloseMinutesInAdvance` (5), `bookingInfo.bookingHasWaitingList`.
 
