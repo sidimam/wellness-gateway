@@ -275,6 +275,11 @@ async function settings() {
   const s = await api('/settings'); const st = await api('/status');
   const ro = !me.user.isAdmin;
   main.innerHTML = `<div class="card"><h1>Impostazioni</h1>
+    <h2>Aspetto e lingua</h2><div class="grid">
+      <div><label>Tema</label><select id="theme"><option value="system">Sistema</option><option value="light">Chiaro</option><option value="dark">Scuro</option></select></div>
+      <div><label>Lingua</label><select id="lang"><option value="it">Italiano</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></div>
+    </div><p class="mut">Valgono per questo browser.</p></div>
+    <div class="card"><h2>Motore</h2>
     <label><input type="checkbox" id="fs" ${s.followServerOpenTime ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Segui l'orario di apertura comunicato dal centro</label>
     <h2 style="margin-top:14px">Regole di prenotazione (quanti giorni prima apre ogni tipo di lezione)</h2>
     <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:00); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre (es. 7 giorni). Con "Segui l'orario del centro" attivo queste regole servono solo quando mywellness non comunica l'apertura di una lezione.</p>
@@ -289,6 +294,7 @@ async function settings() {
     <div id="m"></div>${ro ? '<p class="mut">Solo l\'amministratore può modificare le impostazioni.</p>' : '<p><button class="primary" id="save">Salva</button></p>'}</div>
     <div class="card"><h2>Stato</h2><table><tr><th>Versione</th><td>${esc(st.version)}</td></tr><tr><th>Avviato</th><td>${fmtD(st.startedAt)}</td></tr><tr><th>Push APNs</th><td>${st.push ? 'attivo' : 'non configurato'}</td></tr><tr><th>Lezioni seguite</th><td>${st.activeItems} in corso su ${st.items}</td></tr><tr><th>Indirizzo pubblico</th><td>${esc(st.publicUrl || '—')}</td></tr></table>
     <p><button class="small" id="tn">Invia notifica di prova ai miei dispositivi</button> <span id="tnm" class="mut"></span></p></div>`;
+  i18n.bindPrefs();
   let rules = s.openRules.slice();
   if (!ro && rules.length === 1) rules.unshift({ pattern: '', daysBefore: 3, hour: 5, minute: 0 });   // riga d'esempio da completare
   let classNames = [];

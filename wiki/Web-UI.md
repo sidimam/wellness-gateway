@@ -8,4 +8,5 @@ Served at `http://<nas>:8585/` (and through the tunnel). Plain HTML/JS embedded 
 - **Profili**: mywellness accounts (label, account, club, max, active, last login) with re-login/remove; add profile (family/private, mine/family member); gateway users (admin) with optional mywellness credentials that create the person's own profile.
 - **Impostazioni** (admin): follow club opening time, booking rules table (text in class name → days before + time, `*` default, matched-classes preview), lead, burst, poll, days ahead, priority notifications; status; test push.
 - **Registro**: activity log with profile and level filters, auto-refresh.
-- **Header**: theme (system/light/dark) and language (it, en, es, fr, de) selectors, stored in the browser.
+- **Impostazioni → Aspetto e lingua** (every user): theme (system/light/dark) and language (it, en, es, fr, de), stored in the browser. Every password field has a show/hide toggle.
+- **Profili → Utenti** (admin): *Modifica* changes username, name, role (user/administrator) and password; *Collega account mywellness* creates the person's own profile.

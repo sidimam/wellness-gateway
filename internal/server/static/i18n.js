@@ -157,14 +157,37 @@
   }
   function apply(root) { if (lang !== 'it') walk(root || document.body); document.documentElement.lang = lang; }
   window.i18n = { get lang() { return lang; }, apply, t: tr };
+  T['Mostra password'] = ['Show password', 'Mostrar contraseña', 'Afficher le mot de passe', 'Passwort anzeigen'];
+  T['Nascondi password'] = ['Hide password', 'Ocultar contraseña', 'Masquer le mot de passe', 'Passwort verbergen'];
+  T['Aspetto e lingua'] = ['Appearance and language', 'Aspecto e idioma', 'Apparence et langue', 'Darstellung und Sprache'];
+  T['Valgono per questo browser.'] = ['They apply to this browser.', 'Valen para este navegador.', 'Ils s\'appliquent à ce navigateur.', 'Gelten für diesen Browser.'];
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function bindPrefs() {
     const th = document.getElementById('theme'), lg = document.getElementById('lang');
+    if (!th || !lg) return;
     try { th.value = localStorage.getItem('wg.theme') || 'system'; } catch (e) {}
     lg.value = lang;
     th.onchange = () => { try { localStorage.setItem('wg.theme', th.value); } catch (e) {} if (th.value === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = th.value; };
     lg.onchange = () => { try { localStorage.setItem('wg.lang', lg.value); } catch (e) {} location.reload(); };
+  }
+  /* occhio per mostrare/nascondere le password */
+  function addEyes(root) {
+    (root.querySelectorAll ? root.querySelectorAll('input[type=password]:not([data-eye])') : []).forEach(inp => {
+      inp.dataset.eye = '1';
+      const wrap = document.createElement('div'); wrap.className = 'pw';
+      inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.title = tr('Mostra password'); b.textContent = '👁';
+      b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.textContent = show ? '🙈' : '👁'; b.title = tr(show ? 'Nascondi password' : 'Mostra password'); };
+      wrap.appendChild(b);
+    });
+  }
+  window.i18n = Object.assign(window.i18n || {}, { bindPrefs, addEyes });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    bindPrefs(); addEyes(document.body);
     apply(document.body);
+    new MutationObserver(muts => { for (const m of muts) m.addedNodes.forEach(n => { if (n.nodeType === 1) addEyes(n); }); })
+      .observe(document.body, { childList: true, subtree: true });
     new MutationObserver(muts => { if (lang === 'it') return; for (const m of muts) { m.addedNodes.forEach(walk); if (m.type === 'characterData') walk(m.target); } })
       .observe(document.body, { childList: true, subtree: true, characterData: true });
   });
