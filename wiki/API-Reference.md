@@ -4,14 +4,14 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 
 ## Setup and auth
 - `GET /setup` → `{needsSetup, version, push, publicUrl}`
-- `POST /setup` `{username, password, displayName}` → `{token, user}` (only while no users exist)
+- `POST /setup` `{username, password, displayName, mywellness?: {username, password, facilityUrl, maxBookings}}` → `{token, user, profile?, profileError?}` (only while no users exist)
 - `POST /auth/login` `{username, password, deviceName}` → `{token, user, version, push}`; 5 failures per IP → 15 min lockout (429)
-- `POST /auth/logout`, `GET /me`, `POST /me/password` `{oldPassword, newPassword}`
+- `POST /auth/logout`, `GET /me` → `{user, device, version, push, myProfileId}`, `POST /me/password` `{oldPassword, newPassword}`
 - `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
 
 ## Profiles
 - `GET /profiles` → visible profiles (`id, label, username, displayName, facilityUrl, facilityId, facilityName, maxBookings, ownerUserIds, lastLoginAt, lastLoginError, activeBookings`)
-- `POST /profiles` `{label, username, password, facilityUrl, maxBookings, private}` — verifies the mywellness login before saving
+- `POST /profiles` `{label, username, password, facilityUrl, maxBookings, private, mine, userId}` — verifies the mywellness login before saving; `mine: true` makes it the caller's own profile, `userId` (admin) assigns it to another user
 - `PUT /profiles/{id}` `{label?, password?, maxBookings?, private?}`, `DELETE /profiles/{id}`, `POST /profiles/{id}/relogin`
 - `GET /profiles/{id}/classes?q=&refresh=1` → schedule for the next *daysAhead* days: upstream fields plus `start`, `end`, `opensOn`, `tracked` (item, if any)
 - `GET /profiles/{id}/bookings?refresh=1` → future classes with `isParticipant=true` (booked by the gateway **or** on mywellness)
@@ -25,4 +25,4 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 ## Engine
 - `GET /settings`, `PUT /settings` (admin), `GET /log?profile=&limit=`, `GET /status`
 ## Admin
-- `GET/POST /users`, `DELETE /users/{id}`, `POST /users/{id}/password`, `GET /devices`, `DELETE /devices/{id}`
+- `GET /users`, `POST /users` `{username, password, displayName, isAdmin, mywellness?}` (creates the person's own profile too), `DELETE /users/{id}`, `POST /users/{id}/password`, `GET /devices`, `DELETE /devices/{id}`

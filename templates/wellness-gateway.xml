@@ -21,7 +21,11 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.0)
+  <Changes>### 2026-10-03 (v0.1.1)
+- Users can own their mywellness profile (created together with the user or linked later); the app and the web UI default to the signed-in person's profile.
+- Every web section is per profile (selector always visible), activity log card on the bookings page, log filters by profile and level, rules table with "classes matched" preview, fixed a JS error when switching views while loading.
+
+### 2026-10-03 (v0.1.0)
 - First release: multi-profile engine (scheduler at opening time, waiting list, continuous watching of freed spots, weekly recurrences, per-club booking limit), external cancellation sync, APNs Time Sensitive push, web UI with walkthrough, REST API for the Wellness Booking iOS app.
   </Changes>
   <Requires>A Technogym mywellness account per person. For push notifications: an APNs key (.p8) from developer.apple.com placed in the appdata folder. For remote access: Cloudflare Tunnel or a reverse proxy with TLS.</Requires>

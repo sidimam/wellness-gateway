@@ -262,7 +262,10 @@ func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Username, Password, DisplayName string }
+	var in struct {
+		Username, Password, DisplayName string
+		Mywellness                      *profileInput
+	}
 	if err := decode(r, &in); err != nil || strings.TrimSpace(in.Username) == "" || len(in.Password) < 6 {
 		writeErr(w, 400, "nome utente e password (almeno 6 caratteri) obbligatori")
 		return
@@ -289,7 +292,18 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tok := s.issueDevice(created.ID, "Web UI")
-	writeJSON(w, 201, map[string]any{"token": tok, "user": publicUser(*created)})
+	out := map[string]any{"token": tok, "user": publicUser(*created)}
+	if in.Mywellness != nil && in.Mywellness.Username != "" {
+		if in.Mywellness.Label == "" {
+			in.Mywellness.Label = created.DisplayName
+		}
+		if pr, _, err := s.createProfile(r.Context(), *in.Mywellness, *created, created.ID); err != nil {
+			out["profileError"] = err.Error()
+		} else {
+			out["profile"] = pr
+		}
+	}
+	writeJSON(w, 201, out)
 }
 
 func (s *Server) issueDevice(userID, name string) string {
@@ -367,7 +381,15 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, p principal) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request, p principal) {
-	writeJSON(w, 200, map[string]any{"user": publicUser(p.user), "device": p.device, "version": Version, "push": s.PushOn})
+	var mine string
+	s.Store.Read(func(st *model.State) {
+		for _, pr := range st.Profiles {
+			if pr.UserID == p.user.ID {
+				mine = pr.ID
+			}
+		}
+	})
+	writeJSON(w, 200, map[string]any{"user": publicUser(p.user), "device": p.device, "version": Version, "push": s.PushOn, "myProfileId": mine})
 }
 
 func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, p principal) {
@@ -460,15 +482,18 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request, p principa
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) addProfile(w http.ResponseWriter, r *http.Request, p principal) {
-	var in struct {
-		Label, Username, Password, FacilityURL string
-		MaxBookings                            int
-		Private                                bool
-	}
-	if err := decode(r, &in); err != nil || in.Username == "" || in.Password == "" {
-		writeErr(w, 400, "email e password mywellness obbligatorie")
-		return
+type profileInput struct {
+	Label, Username, Password, FacilityURL string
+	MaxBookings                            int
+	Private                                bool
+	Mine                                   bool   // il profilo appartiene all'utente chiamante
+	UserID                                 string // (admin) il profilo appartiene a questo utente
+}
+
+// createProfile verifica il login mywellness e salva il profilo. owner = utente a cui appartiene (può essere vuoto).
+func (s *Server) createProfile(ctx context.Context, in profileInput, by model.User, owner string) (model.Profile, int, error) {
+	if in.Username == "" || in.Password == "" {
+		return model.Profile{}, 400, errors.New("email e password mywellness obbligatorie")
 	}
 	if in.FacilityURL == "" {
 		in.FacilityURL = "wellnesstown"
@@ -476,35 +501,34 @@ func (s *Server) addProfile(w http.ResponseWriter, r *http.Request, p principal)
 	if in.MaxBookings <= 0 {
 		in.MaxBookings = 5
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	mw := mywellness.New()
 	fac, err := mw.FacilityDetail(ctx, strings.ToLower(strings.TrimSpace(in.FacilityURL)))
 	if err != nil {
-		writeErr(w, 400, err.Error())
-		return
+		return model.Profile{}, 400, err
 	}
 	res, err := mw.Login(ctx, strings.TrimSpace(in.Username), in.Password)
 	if err != nil {
-		writeErr(w, 400, "login mywellness: "+err.Error())
-		return
+		return model.Profile{}, 400, errors.New("login mywellness: " + err.Error())
 	}
 	enc, err := s.Store.Encrypt(in.Password)
 	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+		return model.Profile{}, 500, err
 	}
 	now := time.Now()
 	pr := model.Profile{ID: store.NewID(), Label: in.Label, Username: strings.TrimSpace(in.Username), PasswordEnc: enc,
-		Token: res.Session.Token, MWUserID: res.Session.UserID, DisplayName: res.DisplayName,
+		Token: res.Session.Token, MWUserID: res.Session.UserID, DisplayName: res.DisplayName, UserID: owner,
 		FacilityURL: fac.URL, FacilityID: fac.ID, FacilityName: fac.Name, MaxBookings: in.MaxBookings, LastLoginAt: &now}
 	if pr.Label == "" {
 		pr.Label = res.DisplayName
 	}
-	if in.Private {
-		pr.OwnerUserIDs = []string{p.user.ID}
+	if in.Private && owner != "" {
+		pr.OwnerUserIDs = []string{owner}
+	} else if in.Private {
+		pr.OwnerUserIDs = []string{by.ID}
 	}
-	_ = s.Store.Update(func(st *model.State) error {
+	err = s.Store.Update(func(st *model.State) error {
 		for _, x := range st.Profiles {
 			if strings.EqualFold(x.Username, pr.Username) && x.FacilityID == pr.FacilityID {
 				return errors.New("profilo già presente")
@@ -513,9 +537,32 @@ func (s *Server) addProfile(w http.ResponseWriter, r *http.Request, p principal)
 		st.Profiles = append(st.Profiles, pr)
 		return nil
 	})
-	s.Store.AddLog("success", pr.ID, "profilo aggiunto: "+pr.Label+" ("+pr.Username+") da "+p.user.Username)
+	if err != nil {
+		return model.Profile{}, 409, err
+	}
+	s.Store.AddLog("success", pr.ID, "profilo aggiunto: "+pr.Label+" ("+pr.Username+") da "+by.Username)
 	go func() { _, _ = s.Engine.Calendar(context.Background(), pr.ID, true) }()
-	writeJSON(w, 201, pr)
+	return pr, 201, nil
+}
+
+func (s *Server) addProfile(w http.ResponseWriter, r *http.Request, p principal) {
+	var in profileInput
+	if err := decode(r, &in); err != nil {
+		writeErr(w, 400, "richiesta non valida")
+		return
+	}
+	owner := ""
+	if in.Mine {
+		owner = p.user.ID
+	} else if in.UserID != "" && p.user.IsAdmin {
+		owner = in.UserID
+	}
+	pr, code, err := s.createProfile(r.Context(), in, p.user, owner)
+	if err != nil {
+		writeErr(w, code, err.Error())
+		return
+	}
+	writeJSON(w, code, pr)
 }
 
 func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request, p principal) {
@@ -529,6 +576,7 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request, p princip
 		Password    *string
 		MaxBookings *int
 		Private     *bool
+		UserID      *string
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, 400, "richiesta non valida")
@@ -543,6 +591,9 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request, p princip
 			}
 			if in.Label != nil {
 				pr.Label = *in.Label
+			}
+			if in.UserID != nil && (p.user.IsAdmin || *in.UserID == p.user.ID) {
+				pr.UserID = *in.UserID
 			}
 			if in.MaxBookings != nil && *in.MaxBookings > 0 {
 				pr.MaxBookings = *in.MaxBookings
@@ -860,6 +911,7 @@ func (s *Server) addUser(w http.ResponseWriter, r *http.Request, p principal) {
 	var in struct {
 		Username, Password, DisplayName string
 		IsAdmin                         bool
+		Mywellness                      *profileInput
 	}
 	if err := decode(r, &in); err != nil || strings.TrimSpace(in.Username) == "" || len(in.Password) < 6 {
 		writeErr(w, 400, "nome utente e password (almeno 6 caratteri) obbligatori")
@@ -883,7 +935,18 @@ func (s *Server) addUser(w http.ResponseWriter, r *http.Request, p principal) {
 		writeErr(w, 409, err.Error())
 		return
 	}
-	writeJSON(w, 201, publicUser(u))
+	out := publicUser(u)
+	if in.Mywellness != nil && in.Mywellness.Username != "" {
+		if in.Mywellness.Label == "" {
+			in.Mywellness.Label = u.DisplayName
+		}
+		if pr, _, err := s.createProfile(r.Context(), *in.Mywellness, p.user, u.ID); err != nil {
+			out["profileError"] = err.Error()
+		} else {
+			out["profile"] = pr
+		}
+	}
+	writeJSON(w, 201, out)
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, p principal) {

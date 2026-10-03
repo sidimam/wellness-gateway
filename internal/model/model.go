@@ -37,7 +37,8 @@ type Profile struct {
 	FacilityID     string     `json:"facilityId"`
 	FacilityName   string     `json:"facilityName"`
 	MaxBookings    int        `json:"maxBookings"`
-	OwnerUserIDs   []string   `json:"ownerUserIds"` // vuoto = visibile a tutti (famiglia)
+	UserID         string     `json:"userId,omitempty"` // utente del gateway a cui appartiene (la "sua" persona)
+	OwnerUserIDs   []string   `json:"ownerUserIds"`     // vuoto = visibile a tutti (famiglia)
 	LastLoginAt    *time.Time `json:"lastLoginAt,omitempty"`
 	LastLoginErr   string     `json:"lastLoginError,omitempty"`
 	ActiveBookings int        `json:"activeBookings"`
