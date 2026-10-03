@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5 (2026-10-03)
+- Recurrences attach only occurrences on or after the chosen class.
+- Users: per-user dialog (gateway access, role, mywellness account with link/re-login/unlink/remove, assign an orphan account); role changes and deletion allowed for any admin as long as one admin remains; deleting a user keeps their mywellness account as orphan.
+
 ## v0.1.4 (2026-10-03)
 - Leave the mywellness waiting list from the gateway (`POST /profiles/{id}/leave-waiting-list` `{classId, partitionDate, removeItem}` → item becomes `cancelled`); Unbook result codes handled (`TooLate` = less than 2 hours before, `BookingNotAvailable`); outline eye icon on password fields.
 

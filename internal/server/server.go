@@ -1018,7 +1018,18 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, p principal)
 			if in.DisplayName != nil && *in.DisplayName != "" {
 				u.DisplayName = *in.DisplayName
 			}
-			if in.IsAdmin != nil && id != p.user.ID {
+			if in.IsAdmin != nil {
+				if !*in.IsAdmin {
+					admins := 0
+					for _, x := range st.Users {
+						if x.IsAdmin && x.ID != id {
+							admins++
+						}
+					}
+					if admins == 0 {
+						return errors.New("deve restare almeno un amministratore")
+					}
+				}
 				u.IsAdmin = *in.IsAdmin
 			}
 			if in.Password != nil {
@@ -1045,10 +1056,19 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, p principal)
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, p principal) {
 	id := r.PathValue("id")
 	if id == p.user.ID {
-		writeErr(w, 400, "non puoi eliminare te stesso")
+		writeErr(w, 400, "non puoi eliminare l'utente con cui sei collegato: entra con un altro amministratore")
 		return
 	}
-	_ = s.Store.Update(func(st *model.State) error {
+	err := s.Store.Update(func(st *model.State) error {
+		admins := 0
+		for _, u := range st.Users {
+			if u.IsAdmin && u.ID != id {
+				admins++
+			}
+		}
+		if admins == 0 {
+			return errors.New("deve restare almeno un amministratore")
+		}
 		users := st.Users[:0]
 		for _, u := range st.Users {
 			if u.ID != id {
@@ -1056,6 +1076,11 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, p principal)
 			}
 		}
 		st.Users = users
+		for i := range st.Profiles {
+			if st.Profiles[i].UserID == id {
+				st.Profiles[i].UserID = "" // il profilo mywellness resta, senza utente
+			}
+		}
 		devs := st.Devices[:0]
 		for _, d := range st.Devices {
 			if d.UserID != id {
@@ -1065,6 +1090,10 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, p principal)
 		st.Devices = devs
 		return nil
 	})
+	if err != nil {
+		writeErr(w, 409, err.Error())
+		return
+	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 

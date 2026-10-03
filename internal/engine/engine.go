@@ -373,7 +373,7 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEvent) {
 	var added []model.Item
 	_ = e.Store.Update(func(st *model.State) error {
-		rules := map[string]model.Item{}
+		rules := map[string]model.Item{} // regola → item ricorrente più vecchio (la ricorrenza parte da lì)
 		known := map[string]bool{}
 		for _, it := range st.Items {
 			if it.ProfileID != profileID {
@@ -381,7 +381,10 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 			}
 			known[it.ID] = true
 			if it.Recurring {
-				rules[it.RuleKey(mywellness.Rome)] = it
+				k := it.RuleKey(mywellness.Rome)
+				if cur, ok := rules[k]; !ok || it.Start.Before(cur.Start) {
+					rules[k] = it
+				}
 			}
 		}
 		if len(rules) == 0 {
@@ -397,6 +400,9 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 				continue
 			}
 			if src, ok := rules[probe.RuleKey(mywellness.Rome)]; ok {
+				if ev.Start().Before(src.Start) {
+					continue // la ricorrenza vale dalla data scelta in poi
+				}
 				probe.CreatedBy = src.CreatedBy
 				if ev.IsParticipant {
 					probe.State = model.StateBooked

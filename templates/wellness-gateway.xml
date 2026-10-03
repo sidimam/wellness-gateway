@@ -21,7 +21,11 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.4)
+  <Changes>### 2026-10-03 (v0.1.5)
+- Weekly recurrences start from the chosen class date (earlier occurrences are no longer attached).
+- Users page: one dialog per user with every setting (gateway access, role, mywellness account: link, re-login, unlink, remove); any administrator can promote/demote or delete other users, at least one administrator must remain; a deleted user's account stays as "without user" and can be reassigned.
+
+### 2026-10-03 (v0.1.4)
 - Leave the mywellness waiting list (`POST /profiles/{id}/leave-waiting-list`, button on waiting-list items); Unbook results handled (TooLate → clear message); outline eye icon on password fields.
 
 ### 2026-10-03 (v0.1.3)
