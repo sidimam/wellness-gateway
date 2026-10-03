@@ -1,0 +1,10 @@
+**wellness-gateway**
+- [Home](Home)
+- [Architecture](Architecture)
+- [Installation](Installation)
+- [Configuration](Configuration)
+- [API-Reference](API-Reference)
+- [API-mywellness](API-mywellness)
+- [Security](Security)
+- [Operations](Operations)
+- [Changelog](Changelog)

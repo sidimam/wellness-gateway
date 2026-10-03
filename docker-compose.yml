@@ -1,0 +1,19 @@
+services:
+  wellness-gateway:
+    image: ghcr.io/sidimam/wellness-gateway:latest
+    container_name: wellness-gateway
+    restart: unless-stopped
+    ports:
+      - "8585:8585"
+    environment:
+      TZ: "Europe/Rome"
+      PUBLIC_URL: "https://booking.manieridimambro.it"   # shown in the walkthrough / app setup
+      TRUST_PROXY: "true"                                 # behind Cloudflare Tunnel / reverse proxy
+      # Push notifications to the iOS app (optional but recommended):
+      APNS_KEY_PATH: "/config/AuthKey_APNS.p8"
+      APNS_KEY_ID: "XXXXXXXXXX"
+      APNS_TEAM_ID: "X5SR67A8AL"
+      APNS_BUNDLE_ID: "com.sdimambro.wellness-booking"
+      APNS_PRODUCTION: "true"                             # TestFlight and App Store builds use the production APNs host
+    volumes:
+      - /mnt/user/appdata/wellness-gateway:/config

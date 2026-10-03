@@ -1,0 +1,5 @@
+/wellness-gateway
+*.p8
+state.json
+secret.key
+.DS_Store

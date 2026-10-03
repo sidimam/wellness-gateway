@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>wellness-gateway</Name>
+  <Repository>ghcr.io/sidimam/wellness-gateway:latest</Repository>
+  <Registry>https://github.com/sidimam/wellness-gateway/pkgs/container/wellness-gateway</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/sidimam/wellness-gateway/issues</Support>
+  <Project>https://github.com/sidimam/wellness-gateway</Project>
+  <Overview>Always-on booking engine for Technogym mywellness classes. Keeps several mywellness accounts (the whole family), books each class the instant booking opens, joins the waiting list when a class is full and keeps watching it to grab a freed spot immediately, 24/7. Detects cancellations made in the official app/website. Sends Time Sensitive push notifications to the Wellness Booking iOS app (APNs) and offers a web UI with a first-run walkthrough. State lives in /config (credentials encrypted at rest).</Overview>
+  <Category>Tools:Utilities Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8585]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/sidimam/wellness-gateway/main/templates/wellness-gateway.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/sidimam/wellness-gateway/main/assets/icon.png</Icon>
+  <ExtraParams>--health-cmd "curl -fsS http://127.0.0.1:8585/healthz || exit 1" --health-interval 30s</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Beta>False</Beta>
+  <Date>2026-10-03</Date>
+  <Changes>### 2026-10-03 (v0.1.0)
+- First release: multi-profile engine (scheduler at opening time, waiting list, continuous watching of freed spots, weekly recurrences, per-club booking limit), external cancellation sync, APNs Time Sensitive push, web UI with walkthrough, REST API for the Wellness Booking iOS app.
+  </Changes>
+  <Requires>A Technogym mywellness account per person. For push notifications: an APNs key (.p8) from developer.apple.com placed in the appdata folder. For remote access: Cloudflare Tunnel or a reverse proxy with TLS.</Requires>
+  <Config Name="Web UI / API port" Target="8585" Default="8585" Mode="tcp" Description="Port of the web UI and of the API used by the iOS app." Type="Port" Display="always" Required="true" Mask="false">8585</Config>
+  <Config Name="Gateway data" Target="/config" Default="/mnt/user/appdata/wellness-gateway" Mode="rw" Description="State, encrypted mywellness credentials, log, APNs key." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/wellness-gateway</Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="Address the iOS app uses from outside (e.g. https://booking.example.com). Shown in the walkthrough." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Trust proxy headers" Target="TRUST_PROXY" Default="true" Mode="" Description="true when behind Cloudflare Tunnel or a reverse proxy (client IP for login rate limiting)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="APNs key path" Target="APNS_KEY_PATH" Default="/config/AuthKey_APNS.p8" Mode="" Description="Path (inside the container) of the APNs .p8 key. Leave empty to disable push." Type="Variable" Display="always" Required="false" Mask="false">/config/AuthKey_APNS.p8</Config>
+  <Config Name="APNs key id" Target="APNS_KEY_ID" Default="" Mode="" Description="10-character key id from developer.apple.com → Keys." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="APNs team id" Target="APNS_TEAM_ID" Default="X5SR67A8AL" Mode="" Description="Apple Developer team id." Type="Variable" Display="advanced" Required="false" Mask="false">X5SR67A8AL</Config>
+  <Config Name="APNs bundle id" Target="APNS_BUNDLE_ID" Default="com.sdimambro.wellness-booking" Mode="" Description="Bundle id of the iOS app (APNs topic)." Type="Variable" Display="advanced" Required="false" Mask="false">com.sdimambro.wellness-booking</Config>
+  <Config Name="APNs production" Target="APNS_PRODUCTION" Default="true" Mode="" Description="true for TestFlight/App Store builds, false for Xcode debug builds." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Secret key (optional)" Target="WG_SECRET_KEY" Default="" Mode="" Description="Passphrase used to encrypt mywellness passwords. If empty a random key is generated in /config/secret.key." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Timezone" Target="TZ" Default="Europe/Rome" Mode="" Description="Timezone for logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Rome</Config>
+</Container>

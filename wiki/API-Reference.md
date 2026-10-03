@@ -1,0 +1,28 @@
+# API Reference
+
+Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtained from `POST /auth/login`. Errors: `{"error":"message"}` with a meaningful HTTP status (400, 401, 403, 404, 409, 429, 502).
+
+## Setup and auth
+- `GET /setup` → `{needsSetup, version, push, publicUrl}`
+- `POST /setup` `{username, password, displayName}` → `{token, user}` (only while no users exist)
+- `POST /auth/login` `{username, password, deviceName}` → `{token, user, version, push}`; 5 failures per IP → 15 min lockout (429)
+- `POST /auth/logout`, `GET /me`, `POST /me/password` `{oldPassword, newPassword}`
+- `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
+
+## Profiles
+- `GET /profiles` → visible profiles (`id, label, username, displayName, facilityUrl, facilityId, facilityName, maxBookings, ownerUserIds, lastLoginAt, lastLoginError, activeBookings`)
+- `POST /profiles` `{label, username, password, facilityUrl, maxBookings, private}` — verifies the mywellness login before saving
+- `PUT /profiles/{id}` `{label?, password?, maxBookings?, private?}`, `DELETE /profiles/{id}`, `POST /profiles/{id}/relogin`
+- `GET /profiles/{id}/classes?q=&refresh=1` → schedule for the next *daysAhead* days: upstream fields plus `start`, `end`, `opensOn`, `tracked` (item, if any)
+- `GET /profiles/{id}/bookings?refresh=1` → future classes with `isParticipant=true` (booked by the gateway **or** on mywellness)
+- `POST /profiles/{id}/unbook` `{classId, partitionDate}` → cancels on mywellness; a tracked item becomes `cancelled`
+
+## Items (tracked classes)
+- `GET /items?profile=` ; `POST /items` `{profileId, classId, partitionDate, recurring}` ; `DELETE /items/{id}?rule=1` (also stop the weekly rule) ; `POST /items/{id}/retry`
+- Item: `id, profileId, classId, partitionDate, name, start, end, room, trainer, pictureUrl, serverOpensOn, fireAt, recurring, state, lastMessage, lastCheck, attempts, bookedAt, availablePlaces, maxParticipants`
+- States: `pending, bursting, watching, waitingList, booked, failed, expired, cancelled`
+
+## Engine
+- `GET /settings`, `PUT /settings` (admin), `GET /log?profile=&limit=`, `GET /status`
+## Admin
+- `GET/POST /users`, `DELETE /users/{id}`, `POST /users/{id}/password`, `GET /devices`, `DELETE /devices/{id}`
