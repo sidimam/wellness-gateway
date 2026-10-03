@@ -30,7 +30,7 @@ With Docker Compose see [docker-compose.yml](docker-compose.yml).
 
 ### Remote access (Cloudflare Tunnel)
 
-Add a public hostname to your tunnel → service `HTTP`, URL `http://<nas-lan-ip>:8585`. Keep `TRUST_PROXY=true`. Optionally protect it with Cloudflare Access (allow by e-mail for the browser; the app only needs the gateway's own login, so an Access *bypass* rule for `/api/*` or a service token is required if you enable Access on the hostname).
+Add a public hostname to your tunnel → service `HTTP`, URL `http://<nas-lan-ip>:8585`. Keep `TRUST_PROXY=true`. Optionally protect it with Cloudflare Access: allow by e-mail for the browser and add a *Service Auth* policy with a service token; the Wellness Booking app can send the token's `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers (Altro → Server di casa).
 
 ## Configuration (environment)
 
