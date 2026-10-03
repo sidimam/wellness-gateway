@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.8)
+  <Changes>### 2026-10-03 (v0.1.9)
+- Named opening rules always decide the booking time; the club's reported time applies only to classes under *.
+
+### 2026-10-03 (v0.1.8)
 - Local-only administrators without a mywellness account.
 
 ### 2026-10-03 (v0.1.7)

@@ -326,7 +326,7 @@ async function settings() {
     <div class="card"><h2>Motore</h2>
     <label><input type="checkbox" id="fs" ${s.followServerOpenTime ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Segui l'orario di apertura comunicato dal centro</label>
     <h2 style="margin-top:14px">Regole di prenotazione (quanti giorni prima apre ogni tipo di lezione)</h2>
-    <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:00); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre (es. 7 giorni). Con "Segui l'orario del centro" attivo queste regole servono solo quando mywellness non comunica l'apertura di una lezione.</p>
+    <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:00); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre (es. 7 giorni). Una regola con un nome (es. Reformer) vince sempre, anche con "Segui l'orario del centro" attivo; quell'opzione riguarda solo le lezioni coperte da *, per cui si usa l'apertura comunicata da mywellness.</p>
     <div id="rules"></div>${ro ? '' : '<p><button class="primary" id="addr">+ Aggiungi regola</button></p>'}
     <div class="grid" style="margin-top:14px">
       <div><label>Anticipo (ms)</label><input id="lead" type="number" value="${s.leadMilliseconds}" ${ro ? 'disabled' : ''}></div>

@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.9 (2026-10-03)
+- Opening rules: a named rule always decides the booking time (even with "follow the club" on); the club's reported opening time applies only to classes covered by `*`.
+
 ## v0.1.8 (2026-10-03)
 - Local-only administrators (no mywellness account) can be created; the mywellness account is required only for regular users.
 

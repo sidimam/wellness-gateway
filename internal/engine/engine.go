@@ -151,9 +151,10 @@ func minT(a, b time.Time) time.Time {
 
 func fmtTime(t time.Time) string { return t.In(mywellness.Rome).Format("Mon 2 Jan 15:04") }
 
-// fireAt calcola quando tentare la prenotazione.
+// fireAt calcola quando tentare la prenotazione: una regola specifica (es. "Reformer") vince sempre;
+// per le altre lezioni vale l'orario comunicato dal centro (se "segui il centro" è attivo), altrimenti la regola *.
 func fireAt(it model.Item, s model.Settings) *time.Time {
-	if s.FollowServerOpenTime && it.ServerOpensOn != nil {
+	if _, specific := s.SpecificRule(it.Name); !specific && s.FollowServerOpenTime && it.ServerOpensOn != nil {
 		return it.ServerOpensOn
 	}
 	r := s.Rule(it.Name)

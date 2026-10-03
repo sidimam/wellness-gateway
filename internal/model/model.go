@@ -84,6 +84,20 @@ func DefaultSettings() Settings {
 	}
 }
 
+// SpecificRule restituisce la regola non predefinita che corrisponde al nome, se esiste.
+func (s Settings) SpecificRule(className string) (OpenRule, bool) {
+	for _, r := range s.OpenRules {
+		p := trim(r.Pattern)
+		if p == "" || p == "*" {
+			continue
+		}
+		if containsFold(className, p) {
+			return r, true
+		}
+	}
+	return OpenRule{}, false
+}
+
 // Rule restituisce la regola applicabile a una lezione.
 func (s Settings) Rule(className string) OpenRule {
 	var def *OpenRule
