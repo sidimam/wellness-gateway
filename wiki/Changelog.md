@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.2 (2026-10-03)
+- Edit existing users (`PUT /users/{id}`: username, displayName, isAdmin, password) and link a mywellness account to an existing user from the users table; `GET /users` returns `profileId`/`profileLabel`; hint on the Profiles page when the signed-in person has no own profile.
+
 ## v0.1.1 (2026-10-03)
 - Web UI: theme (system/light/dark) and language (it/en/es/fr/de) selectors in the header; automatic refresh (20 s, and on tab focus) of bookings, classes and log.
 - Gateway users can own their mywellness profile (`userId`): created with the user (setup / add user with optional mywellness credentials) or linked with `mine: true`; `GET /me` returns `myProfileId` and clients default to it.

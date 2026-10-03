@@ -218,12 +218,43 @@ async function profilesView() {
     profiles = await api('/profiles');
     const users = me.user.isAdmin ? await api('/users') : [];
     const uname = Object.fromEntries(users.map(u => [u.id, u.displayName]));
+    const mineMissing = !profiles.some(p => p.userId === me.user.id);
+    msg($('#m'), mineMissing ? i18n.t('Non hai ancora collegato il tuo account mywellness: usa "Aggiungi profilo" con "È il mio account mywellness" (oppure "Collega account mywellness" nella tabella utenti).') : '', true);
     $('#plist').innerHTML = profiles.length ? `<table><tr><th>Etichetta</th><th>Account</th><th>Centro</th><th>Max</th><th>Attive</th><th>Login</th><th></th></tr>${profiles.map(p => `<tr><td>${esc(p.label)}${p.userId ? `<br><small class="mut">profilo di ${esc(uname[p.userId] || (p.userId === me.user.id ? me.user.displayName : 'utente'))}</small>` : ''}</td><td>${esc(p.username)}<br><small class="mut">${esc(p.displayName)}</small></td><td>${esc(p.facilityName)}</td><td>${p.maxBookings}</td><td>${p.activeBookings}</td><td>${p.lastLoginError ? `<span class="lv-error">${esc(p.lastLoginError)}</span>` : p.lastLoginAt ? `<span class="lv-success">ok ${fmtD(p.lastLoginAt)}</span>` : '—'}</td><td class="row"><button class="small" data-relogin="${p.id}">Rifai login</button><button class="danger" data-delp="${p.id}">Rimuovi</button></td></tr>`).join('')}</table>` : '<p class="mut">Nessun profilo.</p>';
     main.querySelectorAll('[data-relogin]').forEach(b => b.onclick = async () => { try { await api(`/profiles/${b.dataset.relogin}/relogin`, { method: 'POST' }); load(); } catch (e) { msg($('#m'), e.message); } });
     main.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => { if (confirm(i18n.t('Rimuovere il profilo e le sue lezioni seguite?'))) { await api('/profiles/' + b.dataset.delp, { method: 'DELETE' }); load(); } });
     if (me.user.isAdmin) {
-      $('#users').innerHTML = `<table>${users.map(u => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td>${u.isAdmin ? 'admin' : 'utente'}</td><td>${u.id !== me.user.id ? `<button class="danger" data-delu="${u.id}">Elimina</button>` : ''}</td></tr>`).join('')}</table>`;
+      $('#users').innerHTML = `<table><tr><th>Nome utente</th><th>Nome</th><th>Ruolo</th><th>Account mywellness</th><th></th></tr>${users.map(u => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td>${u.isAdmin ? 'admin' : 'utente'}</td>
+        <td>${u.profileId ? `<span class="badge booked">${esc(u.profileLabel)}</span>` : `<button class="small" data-link="${u.id}" data-name="${esc(u.displayName)}">Collega account mywellness</button>`}</td>
+        <td class="row"><button class="small" data-edit="${u.id}">Modifica</button>${u.id !== me.user.id ? `<button class="danger" data-delu="${u.id}">Elimina</button>` : ''}</td></tr>
+        <tr id="ux-${u.id}" hidden><td colspan="5"></td></tr>`).join('')}</table>`;
       main.querySelectorAll('[data-delu]').forEach(b => b.onclick = async () => { if (confirm(i18n.t('Eliminare utente?'))) { await api('/users/' + b.dataset.delu, { method: 'DELETE' }); load(); } });
+      // collega un account mywellness a un utente esistente
+      main.querySelectorAll('[data-link]').forEach(b => b.onclick = () => {
+        const row = $('#ux-' + b.dataset.link), td = row.firstElementChild; row.hidden = false;
+        td.innerHTML = `<div class="grid"><div><label>Email mywellness</label><input class="lx-u" autocomplete="off"></div><div><label>Password mywellness</label><input class="lx-p" type="password" autocomplete="new-password"></div><div><label>Centro (URL widget)</label><input class="lx-f" value="wellnesstown"></div><div><label>Massimo prenotazioni attive</label><input class="lx-m" type="number" value="5" min="1"></div></div><div class="lx-m2"></div><p><button class="primary lx-go">Collega</button> <button class="small lx-x">Annulla</button></p>`;
+        td.querySelector('.lx-x').onclick = () => { row.hidden = true; };
+        td.querySelector('.lx-go').onclick = async () => {
+          msg(td.querySelector('.lx-m2'), i18n.t('Verifica login mywellness…'), true);
+          try {
+            await api('/profiles', { method: 'POST', body: { label: b.dataset.name, username: td.querySelector('.lx-u').value, password: td.querySelector('.lx-p').value, facilityUrl: td.querySelector('.lx-f').value, maxBookings: +td.querySelector('.lx-m').value, userId: b.dataset.link } });
+            load();
+          } catch (e) { msg(td.querySelector('.lx-m2'), e.message); }
+        };
+      });
+      // modifica utente
+      main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const u = users.find(x => x.id === b.dataset.edit), row = $('#ux-' + u.id), td = row.firstElementChild; row.hidden = false;
+        td.innerHTML = `<div class="grid"><div><label>Nome utente</label><input class="ex-u" value="${esc(u.username)}"></div><div><label>Nome</label><input class="ex-d" value="${esc(u.displayName)}"></div><div><label>Nuova password gateway (vuoto = invariata)</label><input class="ex-p" type="password" autocomplete="new-password"></div><div><label>Ruolo</label><select class="ex-a" ${u.id === me.user.id ? 'disabled' : ''}><option value="0" ${u.isAdmin ? '' : 'selected'}>Utente</option><option value="1" ${u.isAdmin ? 'selected' : ''}>Amministratore</option></select></div></div><div class="ex-m"></div><p><button class="primary ex-go">Salva</button> <button class="small ex-x">Annulla</button></p>`;
+        td.querySelector('.ex-x').onclick = () => { row.hidden = true; };
+        td.querySelector('.ex-go').onclick = async () => {
+          try {
+            const body = { username: td.querySelector('.ex-u').value, displayName: td.querySelector('.ex-d').value, isAdmin: td.querySelector('.ex-a').value === '1' };
+            if (td.querySelector('.ex-p').value) body.password = td.querySelector('.ex-p').value;
+            await api('/users/' + u.id, { method: 'PUT', body }); load();
+          } catch (e) { msg(td.querySelector('.ex-m'), e.message); }
+        };
+      });
       $('#addu').onclick = async () => {
         try {
           msg($('#um'), 'Creazione in corso…', true);

@@ -123,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/users", admin(s.listUsers))
 	mux.HandleFunc("POST /api/v1/users", admin(s.addUser))
+	mux.HandleFunc("PUT /api/v1/users/{id}", admin(s.updateUser))
 	mux.HandleFunc("DELETE /api/v1/users/{id}", admin(s.deleteUser))
 	mux.HandleFunc("POST /api/v1/users/{id}/password", admin(s.setUserPassword))
 	mux.HandleFunc("GET /api/v1/devices", admin(s.listDevices))
@@ -901,7 +902,14 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request, p principal) 
 	out := []map[string]any{}
 	s.Store.Read(func(st *model.State) {
 		for _, u := range st.Users {
-			out = append(out, publicUser(u))
+			m := publicUser(u)
+			for _, pr := range st.Profiles {
+				if pr.UserID == u.ID {
+					m["profileId"] = pr.ID
+					m["profileLabel"] = pr.Label
+				}
+			}
+			out = append(out, m)
 		}
 	})
 	writeJSON(w, 200, out)
@@ -947,6 +955,65 @@ func (s *Server) addUser(w http.ResponseWriter, r *http.Request, p principal) {
 		}
 	}
 	writeJSON(w, 201, out)
+}
+
+func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, p principal) {
+	id := r.PathValue("id")
+	var in struct {
+		DisplayName *string
+		IsAdmin     *bool
+		Password    *string
+		Username    *string
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, 400, "richiesta non valida")
+		return
+	}
+	if in.Password != nil && len(*in.Password) < 6 {
+		writeErr(w, 400, "password di almeno 6 caratteri")
+		return
+	}
+	var out map[string]any
+	err := s.Store.Update(func(st *model.State) error {
+		for i := range st.Users {
+			u := &st.Users[i]
+			if u.ID != id {
+				continue
+			}
+			if in.Username != nil && strings.TrimSpace(*in.Username) != "" {
+				nu := strings.ToLower(strings.TrimSpace(*in.Username))
+				for _, x := range st.Users {
+					if x.ID != id && x.Username == nu {
+						return errors.New("nome utente già in uso")
+					}
+				}
+				u.Username = nu
+			}
+			if in.DisplayName != nil && *in.DisplayName != "" {
+				u.DisplayName = *in.DisplayName
+			}
+			if in.IsAdmin != nil && id != p.user.ID {
+				u.IsAdmin = *in.IsAdmin
+			}
+			if in.Password != nil {
+				hash, salt, err := store.HashPassword(*in.Password)
+				if err != nil {
+					return err
+				}
+				u.PasswordHash, u.Salt = hash, salt
+			}
+			out = publicUser(*u)
+		}
+		if out == nil {
+			return errors.New("utente non trovato")
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, p principal) {

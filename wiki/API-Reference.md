@@ -25,4 +25,4 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 ## Engine
 - `GET /settings`, `PUT /settings` (admin), `GET /log?profile=&limit=`, `GET /status`
 ## Admin
-- `GET /users`, `POST /users` `{username, password, displayName, isAdmin, mywellness?}` (creates the person's own profile too), `DELETE /users/{id}`, `POST /users/{id}/password`, `GET /devices`, `DELETE /devices/{id}`
+- `GET /users` (with `profileId`/`profileLabel` of the person's own profile), `PUT /users/{id}` `{username?, displayName?, isAdmin?, password?}`, `POST /users` `{username, password, displayName, isAdmin, mywellness?}` (creates the person's own profile too), `DELETE /users/{id}`, `POST /users/{id}/password`, `GET /devices`, `DELETE /devices/{id}`
