@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-03</Date>
-  <Changes>### 2026-10-03 (v0.1.2)
+  <Changes>### 2026-10-03 (v0.1.3)
+- "Utenti e account mywellness": one page, one form — a gateway user always has their mywellness account (email/password required); edit button on every profile (label, mywellness password, max bookings, visibility, owner); link an account to an existing user.
+
+### 2026-10-03 (v0.1.2)
 - Theme and language moved into Settings ("Aspetto e lingua"); show/hide toggle on every password field.
 - Users table: edit a user (username, name, role, password) and link a mywellness account to an existing user (`PUT /users/{id}`, `POST /profiles` with `userId`); hint when the signed-in person has no own profile.
 

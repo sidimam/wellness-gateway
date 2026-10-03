@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.3 (2026-10-03)
+- Web UI: "Utenti e account mywellness" merges users and profiles: adding a user requires their mywellness email/password and creates the person's profile; every profile has *Modifica* (label, mywellness password, max bookings, visibility, owner user); link an account to an existing user.
+
 ## v0.1.2 (2026-10-03)
 - Theme and language selectors moved into Settings; eye toggle on password fields.
 - Edit existing users (`PUT /users/{id}`: username, displayName, isAdmin, password) and link a mywellness account to an existing user from the users table; `GET /users` returns `profileId`/`profileLabel`; hint on the Profiles page when the signed-in person has no own profile.
