@@ -51,6 +51,11 @@ func Open(dir string) (*Store, error) {
 	if len(s.state.Settings.OpenRules) == 0 {
 		s.state.Settings = model.DefaultSettings()
 	}
+	// migrazione v0.1.11: ritmo "umano" (il vecchio default era 20 s)
+	if s.state.Settings.PollSeconds < 30 {
+		s.state.Settings.PollSeconds = 60
+		_ = s.flush()
+	}
 	return s, nil
 }
 

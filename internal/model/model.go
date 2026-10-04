@@ -79,7 +79,7 @@ func DefaultSettings() Settings {
 		OpenRules:             []OpenRule{{ID: "default", Pattern: "*", DaysBefore: 7, Hour: 5, Minute: 0}},
 		LeadMilliseconds:      300,
 		BurstSeconds:          120,
-		PollSeconds:           20,
+		PollSeconds:           60,
 		DaysAhead:             14,
 		PriorityNotifications: true,
 	}

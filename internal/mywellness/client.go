@@ -109,7 +109,7 @@ func (c *Client) do(ctx context.Context, method, base, path string, query url.Va
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Origin", "https://widgets.mywellness.com")
 	req.Header.Set("Referer", "https://widgets.mywellness.com/")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) WellnessGateway/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15")
 	if sess != nil && sess.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+sess.Token)
 	}

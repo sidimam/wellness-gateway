@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.11 (2026-10-04)
+- Human-like traffic: watching every 60 s by default (minimum 15), 30 s in the 4 hours before the class, ±15% jitter; one schedule request per profile and day shared by all tracked classes of that day (10 s cache); browser User-Agent. Existing settings below 30 s are migrated to 60 s.
+
 ## v0.1.10 (2026-10-04)
 - Booking time always comes from the matching rule (hour:minute); "follow the club" now decides only the opening day. Fixes rules set to 05:01 still showing 05:00.
 - Per-rule active-bookings limit (`maxBookings` on a rule, e.g. Reformer 3) in addition to the per-profile limit; `GET /profiles` returns `limits` counters.

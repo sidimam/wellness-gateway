@@ -331,7 +331,7 @@ async function settings() {
     <div class="grid" style="margin-top:14px">
       <div><label>Anticipo (ms)</label><input id="lead" type="number" value="${s.leadMilliseconds}" ${ro ? 'disabled' : ''}></div>
       <div><label>Insisti dopo l'apertura (s)</label><input id="burst" type="number" value="${s.burstSeconds}" ${ro ? 'disabled' : ''}></div>
-      <div><label>Osservazione: controlla ogni (s)</label><input id="poll" type="number" value="${s.pollSeconds}" ${ro ? 'disabled' : ''}></div>
+      <div><label>Osservazione: controlla ogni (s)</label><input id="poll" type="number" min="15" value="${s.pollSeconds}" ${ro ? 'disabled' : ''} title="Ritmo normale; nelle 4 ore prima della lezione il gateway controlla il doppio più spesso"></div>
       <div><label>Giorni di calendario</label><input id="days" type="number" value="${s.daysAhead}" ${ro ? 'disabled' : ''}></div>
     </div>
     <label><input type="checkbox" id="prio" ${s.priorityNotifications ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Notifiche prioritarie (Time Sensitive)</label>

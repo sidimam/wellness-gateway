@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-04 (v0.1.10)
+  <Changes>### 2026-10-04 (v0.1.11)
+- Human-like polling: 60 s default, 30 s in the 4 hours before the class, jitter, one request per profile and day, browser User-Agent.
+
+### 2026-10-04 (v0.1.10)
 - Rule time always applies (club decides only the day); per-rule active-bookings limit with counters.
 
 ### 2026-10-03 (v0.1.9)

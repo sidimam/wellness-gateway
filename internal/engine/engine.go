@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ type Engine struct {
 
 	mu        sync.Mutex
 	calendars map[string]calendar // per profilo: calendario autenticato (daysAhead)
+	dayCache  map[string]calendar // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
 	nextPoll  map[string]time.Time
 	lastFull  time.Time
 	wake      chan struct{}
@@ -39,7 +41,7 @@ type calendar struct {
 
 // New crea il motore.
 func New(st *store.Store, push *apns.Client) *Engine {
-	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, nextPoll: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
+	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, nextPoll: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
 }
 
 // Kick sveglia il loop (dopo modifiche da API).
@@ -192,16 +194,16 @@ func (e *Engine) RuleCount(profileID string, r model.OpenRule) int {
 	return len(seen)
 }
 
+// pollInterval: ritmo "umano" (default 60 s) che si intensifica a 30 s nelle 4 ore prima della lezione,
+// con una variazione casuale del ±15% per non avere un battito regolare.
 func pollInterval(it model.Item, s model.Settings) time.Duration {
-	base := time.Duration(max(5, s.PollSeconds)) * time.Second
-	toCancelDeadline := time.Until(it.Start.Add(-120 * time.Minute))
-	if toCancelDeadline > 0 && toCancelDeadline < 45*time.Minute {
-		return max(5*time.Second, base/3)
+	base := time.Duration(max(15, s.PollSeconds)) * time.Second
+	d := base
+	if time.Until(it.Start) < 4*time.Hour {
+		d = max(15*time.Second, base/2)
 	}
-	if time.Until(it.Start) < 6*time.Hour {
-		return max(5*time.Second, base/2)
-	}
-	return base
+	jitter := time.Duration((rand.Float64()*0.30 - 0.15) * float64(d))
+	return d + jitter
 }
 
 func (e *Engine) setItem(id string, fn func(*model.Item)) {
@@ -756,17 +758,7 @@ func (e *Engine) watch(ctx context.Context, id string) {
 	}
 	now := time.Now()
 	e.setItem(id, func(x *model.Item) { x.LastCheck = &now })
-	p, _ := e.profile(it.ProfileID)
-	sess, err := e.Session(ctx, it.ProfileID, false)
-	if err != nil {
-		return
-	}
-	events, err := e.MW.Search(ctx, p.FacilityID, it.Start, it.Start, sess)
-	if errors.Is(err, mywellness.ErrUnauthorized) {
-		if sess, err = e.Session(ctx, it.ProfileID, true); err == nil {
-			events, err = e.MW.Search(ctx, p.FacilityID, it.Start, it.Start, sess)
-		}
-	}
+	events, err := e.dayEvents(ctx, it.ProfileID, it.Start)
 	if err != nil {
 		e.setItem(id, func(x *model.Item) { x.LastMessage = "Rete: " + err.Error() })
 		return
@@ -800,6 +792,46 @@ func (e *Engine) watch(ctx context.Context, id string) {
 		return
 	}
 	e.setItem(id, func(x *model.Item) { x.LastMessage = "Lezione non più in calendario" })
+}
+
+// dayEvents legge il calendario di un giorno per un profilo, riusando per 10 s la lettura
+// tra tutte le lezioni dello stesso giorno (una sola richiesta a mywellness).
+func (e *Engine) dayEvents(ctx context.Context, profileID string, day time.Time) ([]mywellness.ClassEvent, error) {
+	key := profileID + "|" + day.In(mywellness.Rome).Format("2006-01-02")
+	e.mu.Lock()
+	c, ok := e.dayCache[key]
+	e.mu.Unlock()
+	if ok && time.Since(c.at) < 10*time.Second {
+		return c.events, nil
+	}
+	p, found := e.profile(profileID)
+	if !found {
+		return nil, errors.New("profilo inesistente")
+	}
+	sess, err := e.Session(ctx, profileID, false)
+	if err != nil {
+		return nil, err
+	}
+	events, err := e.MW.Search(ctx, p.FacilityID, day, day, sess)
+	if errors.Is(err, mywellness.ErrUnauthorized) {
+		if sess, err = e.Session(ctx, profileID, true); err == nil {
+			events, err = e.MW.Search(ctx, p.FacilityID, day, day, sess)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	e.dayCache[key] = calendar{events: events, at: time.Now()}
+	if len(e.dayCache) > 200 {
+		for k, v := range e.dayCache {
+			if time.Since(v.at) > time.Minute {
+				delete(e.dayCache, k)
+			}
+		}
+	}
+	e.mu.Unlock()
+	return events, nil
 }
 
 // notify manda una push a tutti i dispositivi degli utenti che vedono il profilo.
@@ -887,8 +919,8 @@ func Visible(p model.Profile, userID string, isAdmin bool) bool {
 
 // Normalize ripulisce le impostazioni ricevute dall'API.
 func Normalize(s *model.Settings) {
-	if s.PollSeconds < 5 {
-		s.PollSeconds = 5
+	if s.PollSeconds < 15 {
+		s.PollSeconds = 15
 	}
 	if s.BurstSeconds < 10 {
 		s.BurstSeconds = 10
