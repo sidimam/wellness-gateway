@@ -53,11 +53,12 @@ type Profile struct {
 // OpenRule: le lezioni il cui nome contiene Pattern aprono DaysBefore giorni prima alle Hour:Minute.
 // Pattern "*" = tutte le altre; pattern vuoto = ignorata.
 type OpenRule struct {
-	ID         string `json:"id"`
-	Pattern    string `json:"pattern"`
-	DaysBefore int    `json:"daysBefore"`
-	Hour       int    `json:"hour"`
-	Minute     int    `json:"minute"`
+	ID          string `json:"id"`
+	Pattern     string `json:"pattern"`
+	DaysBefore  int    `json:"daysBefore"`
+	Hour        int    `json:"hour"`
+	Minute      int    `json:"minute"`
+	MaxBookings int    `json:"maxBookings"` // 0 = nessun limite specifico per questa regola
 }
 
 // Settings globali del motore.

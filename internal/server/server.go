@@ -472,15 +472,43 @@ func (s *Server) visibleProfile(p principal, id string) (model.Profile, bool) {
 	return out, ok
 }
 
+type limitInfo struct {
+	Pattern string `json:"pattern"`
+	Active  int    `json:"active"`
+	Max     int    `json:"max"`
+}
+
+type profileOut struct {
+	model.Profile
+	Limits []limitInfo `json:"limits"`
+}
+
+func (s *Server) profileOut(pr model.Profile, settings model.Settings) profileOut {
+	o := profileOut{Profile: pr, Limits: []limitInfo{}}
+	for _, r := range settings.OpenRules {
+		pat := strings.TrimSpace(r.Pattern)
+		if r.MaxBookings > 0 && pat != "" && pat != "*" {
+			o.Limits = append(o.Limits, limitInfo{Pattern: pat, Active: s.Engine.RuleCount(pr.ID, r), Max: r.MaxBookings})
+		}
+	}
+	return o
+}
+
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request, p principal) {
-	out := []model.Profile{}
+	var profiles []model.Profile
+	var settings model.Settings
 	s.Store.Read(func(st *model.State) {
+		settings = st.Settings
 		for _, pr := range st.Profiles {
 			if engine.Visible(pr, p.user.ID, p.user.IsAdmin) {
-				out = append(out, pr)
+				profiles = append(profiles, pr)
 			}
 		}
 	})
+	out := []profileOut{}
+	for _, pr := range profiles {
+		out = append(out, s.profileOut(pr, settings))
+	}
 	writeJSON(w, 200, out)
 }
 

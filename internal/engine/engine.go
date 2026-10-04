@@ -151,16 +151,45 @@ func minT(a, b time.Time) time.Time {
 
 func fmtTime(t time.Time) string { return t.In(mywellness.Rome).Format("Mon 2 Jan 15:04") }
 
-// fireAt calcola quando tentare la prenotazione: una regola specifica (es. "Reformer") vince sempre;
-// per le altre lezioni vale l'orario comunicato dal centro (se "segui il centro" è attivo), altrimenti la regola *.
+// fireAt calcola quando tentare la prenotazione. L'ORA viene sempre dalla regola che corrisponde
+// (specifica, altrimenti *). Il GIORNO viene dall'apertura comunicata dal centro se "segui il centro" è
+// attivo e il centro la comunica, altrimenti da "giorni prima" della regola.
 func fireAt(it model.Item, s model.Settings) *time.Time {
-	if _, specific := s.SpecificRule(it.Name); !specific && s.FollowServerOpenTime && it.ServerOpensOn != nil {
-		return it.ServerOpensOn
-	}
 	r := s.Rule(it.Name)
-	day := it.Start.In(mywellness.Rome)
-	t := time.Date(day.Year(), day.Month(), day.Day()-r.DaysBefore, r.Hour, r.Minute, 0, 0, mywellness.Rome)
+	var day time.Time
+	if s.FollowServerOpenTime && it.ServerOpensOn != nil {
+		day = it.ServerOpensOn.In(mywellness.Rome)
+	} else {
+		st := it.Start.In(mywellness.Rome)
+		day = time.Date(st.Year(), st.Month(), st.Day()-r.DaysBefore, 0, 0, 0, 0, mywellness.Rome)
+	}
+	t := time.Date(day.Year(), day.Month(), day.Day(), r.Hour, r.Minute, 0, 0, mywellness.Rome)
 	return &t
+}
+
+// RuleCount conta le prenotazioni attive del profilo che ricadono in una regola (per il limite per regola).
+func (e *Engine) RuleCount(profileID string, r model.OpenRule) int {
+	pat := strings.TrimSpace(r.Pattern)
+	now := time.Now()
+	seen := map[string]bool{}
+	e.mu.Lock()
+	if c, ok := e.calendars[profileID]; ok {
+		for _, ev := range c.events {
+			if ev.IsParticipant && ev.Start().After(now) && (pat == "*" || strings.Contains(strings.ToLower(ev.Name), strings.ToLower(pat))) {
+				seen[ev.Key()] = true
+			}
+		}
+	}
+	e.mu.Unlock()
+	e.Store.Read(func(st *model.State) {
+		for _, it := range st.Items {
+			if it.ProfileID == profileID && it.State == model.StateBooked && it.Start.After(now) &&
+				(pat == "*" || strings.Contains(strings.ToLower(it.Name), strings.ToLower(pat))) {
+				seen[it.ClassID+"|"+itoa(it.PartitionDate)] = true
+			}
+		}
+	})
+	return len(seen)
 }
 
 func pollInterval(it model.Item, s model.Settings) time.Duration {
@@ -638,6 +667,20 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 			e.logf("warn", it.ProfileID, "%s %s: limite prenotazioni (%d/%d) raggiunto", it.Name, fmtTime(it.Start), active, maxB)
 		}
 		return
+	}
+	// limite specifico della regola (es. Reformer: massimo 3 attive)
+	if r, ok := e.settings().SpecificRule(it.Name); ok && r.MaxBookings > 0 {
+		if n := e.RuleCount(it.ProfileID, r); n >= r.MaxBookings {
+			first := it.Attempts == 0
+			e.setItem(id, func(x *model.Item) {
+				x.Attempts++
+				x.LastMessage = fmt.Sprintf("Limite \"%s\" raggiunto (%d/%d): riprovo quando se ne libera una", r.Pattern, n, r.MaxBookings)
+			})
+			if first {
+				e.logf("warn", it.ProfileID, "%s %s: limite regola %s (%d/%d) raggiunto", it.Name, fmtTime(it.Start), r.Pattern, n, r.MaxBookings)
+			}
+			return
+		}
 	}
 	now := time.Now()
 	e.setItem(id, func(x *model.Item) { x.Attempts++; x.LastCheck = &now })

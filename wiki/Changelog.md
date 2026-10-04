@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.10 (2026-10-04)
+- Booking time always comes from the matching rule (hour:minute); "follow the club" now decides only the opening day. Fixes rules set to 05:01 still showing 05:00.
+- Per-rule active-bookings limit (`maxBookings` on a rule, e.g. Reformer 3) in addition to the per-profile limit; `GET /profiles` returns `limits` counters.
+
 ## v0.1.9 (2026-10-03)
 - Opening rules: a named rule always decides the booking time (even with "follow the club" on); the club's reported opening time applies only to classes covered by `*`.
 

@@ -12,7 +12,8 @@
 | `TZ` | `Europe/Rome` | Timezone |
 
 ## Engine settings (web UI → Impostazioni, admin only)
-- **Follow the club's opening time** (default on): use `bookingOpensOn` reported by mywellness for classes covered by the `*` rule. A **named rule** (e.g. `Reformer`) always decides days and time for the classes it matches.
+- **Follow the club's opening time** (default on): the opening *day* comes from `bookingOpensOn` reported by mywellness; the *time of day* always comes from the matching rule. Off: day = class day − rule's days before.
+- **Per-rule limit**: a named rule can carry `maxBookings` (e.g. Reformer 3): the gateway books that kind of class only while the profile has fewer active bookings of that kind, besides the profile-wide limit.
 - **Opening rules**: text contained in the class name → days before + time; `*` is the default rule. Example for Wellness Town: `Reformer` → 3 days 05:00, `*` → 7 days 05:00. Rules without a name are ignored.
 - **Lead** (ms, default 300), **burst** (s, default 120), **poll** (s, default 20, minimum 5), **days ahead** (default 14), **priority notifications**.
 
