@@ -51,6 +51,17 @@ func Open(dir string) (*Store, error) {
 	if len(s.state.Settings.OpenRules) == 0 {
 		s.state.Settings = model.DefaultSettings()
 	}
+	// migrazione v0.1.12: i dispositivi dell'app vedono solo il proprio profilo
+	changed := false
+	for i := range s.state.Devices {
+		if s.state.Devices[i].Name != "Web UI" && !s.state.Devices[i].SelfOnly {
+			s.state.Devices[i].SelfOnly = true
+			changed = true
+		}
+	}
+	if changed {
+		_ = s.flush()
+	}
 	// migrazione v0.1.11: ritmo "umano" (il vecchio default era 20 s)
 	if s.state.Settings.PollSeconds < 30 {
 		s.state.Settings.PollSeconds = 60

@@ -6,3 +6,5 @@
 - No CORS, strict CSP on the web UI, security headers on every response, `/api/*` is `no-store`.
 - Only the gateway talks to Technogym; the iOS app holds a gateway token only.
 - Expose it over HTTPS (Cloudflare Tunnel or a reverse proxy). The gateway itself speaks plain HTTP on the LAN.
+
+- **Isolation**: the iOS app logs in with `selfOnly`, so every person (administrators included) sees only their own profile and bookings on the phone. Regular users see only their own data on the web too; only administrators in the web UI see the whole family and manage users.

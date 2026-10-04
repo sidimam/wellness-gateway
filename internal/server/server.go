@@ -58,6 +58,9 @@ type principal struct {
 	device model.Device
 }
 
+// seesAll: amministratore dalla web UI. I dispositivi dell'app (SelfOnly) vedono solo il proprio profilo.
+func (p principal) seesAll() bool { return p.user.IsAdmin && !p.device.SelfOnly }
+
 // Handler costruisce il router.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -90,6 +93,10 @@ func (s *Server) Handler() http.Handler {
 		return auth(func(w http.ResponseWriter, r *http.Request, p principal) {
 			if !p.user.IsAdmin {
 				writeErr(w, 403, "riservato all'amministratore")
+				return
+			}
+			if p.device.SelfOnly && !strings.HasPrefix(r.URL.Path, "/api/v1/settings") {
+				writeErr(w, 403, "la gestione utenti si fa dalla web UI del gateway")
 				return
 			}
 			h(w, r, p)
@@ -327,7 +334,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Unlock()
-	var in struct{ Username, Password, DeviceName string }
+	var in struct {
+		Username, Password, DeviceName string
+		SelfOnly                       bool // app iOS: isolamento per utente anche se amministratore
+	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, 400, "richiesta non valida")
 		return
@@ -365,7 +375,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		name = "Dispositivo"
 	}
 	tok := s.issueDevice(user.ID, name)
-	writeJSON(w, 200, map[string]any{"token": tok, "user": publicUser(*user), "version": Version, "push": s.PushOn})
+	if in.SelfOnly {
+		_ = s.Store.Update(func(st *model.State) error {
+			for i := range st.Devices {
+				if st.Devices[i].Token == tok {
+					st.Devices[i].SelfOnly = true
+				}
+			}
+			return nil
+		})
+	}
+	writeJSON(w, 200, map[string]any{"token": tok, "user": publicUser(*user), "version": Version, "push": s.PushOn, "selfOnly": in.SelfOnly})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request, p principal) {
@@ -391,7 +411,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request, p principal) {
 			}
 		}
 	})
-	writeJSON(w, 200, map[string]any{"user": publicUser(p.user), "device": p.device, "version": Version, "push": s.PushOn, "myProfileId": mine})
+	writeJSON(w, 200, map[string]any{"user": publicUser(p.user), "device": p.device, "version": Version, "push": s.PushOn, "myProfileId": mine, "selfOnly": p.device.SelfOnly})
 }
 
 func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, p principal) {
@@ -442,7 +462,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request, p principal) {
 	var profiles, items, active int
 	s.Store.Read(func(st *model.State) {
 		for _, pr := range st.Profiles {
-			if engine.Visible(pr, p.user.ID, p.user.IsAdmin) {
+			if engine.Visible(pr, p.user.ID, p.seesAll()) {
 				profiles++
 			}
 		}
@@ -464,7 +484,7 @@ func (s *Server) visibleProfile(p principal, id string) (model.Profile, bool) {
 	ok := false
 	s.Store.Read(func(st *model.State) {
 		for _, pr := range st.Profiles {
-			if pr.ID == id && engine.Visible(pr, p.user.ID, p.user.IsAdmin) {
+			if pr.ID == id && engine.Visible(pr, p.user.ID, p.seesAll()) {
 				out, ok = pr, true
 			}
 		}
@@ -500,7 +520,7 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request, p principa
 	s.Store.Read(func(st *model.State) {
 		settings = st.Settings
 		for _, pr := range st.Profiles {
-			if engine.Visible(pr, p.user.ID, p.user.IsAdmin) {
+			if engine.Visible(pr, p.user.ID, p.seesAll()) {
 				profiles = append(profiles, pr)
 			}
 		}
@@ -583,7 +603,7 @@ func (s *Server) addProfile(w http.ResponseWriter, r *http.Request, p principal)
 		return
 	}
 	owner := ""
-	if in.Mine {
+	if in.Mine || p.device.SelfOnly {
 		owner = p.user.ID
 	} else if in.UserID != "" && p.user.IsAdmin {
 		owner = in.UserID
@@ -833,7 +853,7 @@ func (s *Server) listItems(w http.ResponseWriter, r *http.Request, p principal) 
 	s.Store.Read(func(st *model.State) {
 		vis := map[string]bool{}
 		for _, pr := range st.Profiles {
-			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.user.IsAdmin)
+			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.seesAll())
 		}
 		for _, it := range st.Items {
 			if vis[it.ProfileID] && (pid == "" || it.ProfileID == pid) {
@@ -875,7 +895,7 @@ func (s *Server) itemVisible(p principal, id string) (model.Item, bool) {
 				continue
 			}
 			for _, pr := range st.Profiles {
-				if pr.ID == it.ProfileID && engine.Visible(pr, p.user.ID, p.user.IsAdmin) {
+				if pr.ID == it.ProfileID && engine.Visible(pr, p.user.ID, p.seesAll()) {
 					out, ok = it, true
 				}
 			}
@@ -935,7 +955,7 @@ func (s *Server) getLog(w http.ResponseWriter, r *http.Request, p principal) {
 	s.Store.Read(func(st *model.State) {
 		vis := map[string]bool{}
 		for _, pr := range st.Profiles {
-			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.user.IsAdmin)
+			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.seesAll())
 		}
 		for _, l := range st.Log {
 			if l.ProfileID != "" && !vis[l.ProfileID] {
@@ -957,6 +977,9 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request, p principal) 
 	out := []map[string]any{}
 	s.Store.Read(func(st *model.State) {
 		for _, u := range st.Users {
+			if !p.seesAll() && u.ID != p.user.ID {
+				continue
+			}
 			m := publicUser(u)
 			for _, pr := range st.Profiles {
 				if pr.UserID == u.ID {

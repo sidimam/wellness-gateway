@@ -5,7 +5,7 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 ## Setup and auth
 - `GET /setup` → `{needsSetup, version, push, publicUrl}`
 - `POST /setup` `{username, password, displayName, mywellness?: {username, password, facilityUrl, maxBookings}}` → `{token, user, profile?, profileError?}` (only while no users exist)
-- `POST /auth/login` `{username, password, deviceName}` → `{token, user, version, push}`; 5 failures per IP → 15 min lockout (429)
+- `POST /auth/login` `{username, password, deviceName, selfOnly}` → `{token, user, version, push, selfOnly}`; with `selfOnly: true` the device sees only the person's own profile even if admin (the iOS app always sends it); 5 failures per IP → 15 min lockout (429)
 - `POST /auth/logout`, `GET /me` → `{user, device, version, push, myProfileId}`, `POST /me/password` `{oldPassword, newPassword}`
 - `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.12 (2026-10-04)
+- User isolation: devices that log in with `selfOnly: true` (the iOS app) see only the signed-in person's profile, items, bookings and log, even for administrators; user management is web-only. Existing app devices are migrated. Regular users are isolated on the web too; administrators keep the family view in the web UI.
+
 ## v0.1.11 (2026-10-04)
 - Human-like traffic: watching every 60 s by default (minimum 15), 30 s in the 4 hours before the class, ±15% jitter; one schedule request per profile and day shared by all tracked classes of that day (10 s cache); browser User-Agent. Existing settings below 30 s are migrated to 60 s.
 

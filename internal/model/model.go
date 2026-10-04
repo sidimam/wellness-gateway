@@ -20,6 +20,7 @@ type Device struct {
 	UserID    string    `json:"userId"`
 	Name      string    `json:"name"`
 	APNSToken string    `json:"apnsToken,omitempty"`
+	SelfOnly  bool      `json:"selfOnly"` // app iOS: vede solo il proprio profilo, anche se amministratore
 	CreatedAt time.Time `json:"createdAt"`
 	LastSeen  time.Time `json:"lastSeen"`
 }
