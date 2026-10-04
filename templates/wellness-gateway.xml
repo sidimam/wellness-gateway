@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-04 (v0.1.12)
+  <Changes>### 2026-10-04 (v0.1.13)
+- Fix: verify the mywellness session (tokens expire hourly and APIs silently answer as anonymous); automatic re-login.
+
+### 2026-10-04 (v0.1.12)
 - Per-user isolation on app devices (selfOnly); user management web-only.
 
 ### 2026-10-04 (v0.1.11)

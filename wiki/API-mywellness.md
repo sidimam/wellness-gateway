@@ -5,6 +5,7 @@ Headers on every call: `X-MWAPPS-APPID: EC1D38D7-D359-48D0-A60C-D8C0B8FB9DF9`, `
 | Purpose | Endpoint | Notes |
 |---|---|---|
 | Login | `POST https://core.mywellness.com/v2/enduser/authentication/login` `{username,password,keepMeLoggedIn}` | → `token`, `userContext.id`; `MfaRequired` (401) not supported |
+| Session check | `POST https://services.mywellness.com/application/<appId>/GetLoginStatus` | 200 with `errors[].field = TokenNotValid` when expired (tokens last ~1 h; other APIs then answer as anonymous) |
 | Club | `GET https://core.mywellness.com/v2/enduser/facility/detail?facilityUrl=…` | `id`, `name` |
 | Schedule | `GET https://calendar.mywellness.com/v2/enduser/class/Search?eventTypes=Class&facilityId=…&fromDate=YYYY-MM-DD&toDate=…` | public; with token `isParticipant`, `isInWaitingList`, `waitingListPosition` |
 | Book | `POST https://calendar.mywellness.com/v2/enduser/class/Book` `{partitionDate:YYYYMMDD,userId,classId,station:null}` | `result` ∈ `Booked`, `UserAddedToWaitingList`, `PlaceNotAvailable`, `ToMuchParticipants`, `Failed` |

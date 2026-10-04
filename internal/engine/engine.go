@@ -25,8 +25,9 @@ type Engine struct {
 	Push  *apns.Client // può essere nil
 
 	mu        sync.Mutex
-	calendars map[string]calendar // per profilo: calendario autenticato (daysAhead)
-	dayCache  map[string]calendar // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
+	calendars map[string]calendar  // per profilo: calendario autenticato (daysAhead)
+	dayCache  map[string]calendar  // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
+	sessOK    map[string]time.Time // per profilo: ultima verifica positiva della sessione (GetLoginStatus)
 	nextPoll  map[string]time.Time
 	lastFull  time.Time
 	wake      chan struct{}
@@ -41,7 +42,7 @@ type calendar struct {
 
 // New crea il motore.
 func New(st *store.Store, push *apns.Client) *Engine {
-	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, nextPoll: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
+	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
 }
 
 // Kick sveglia il loop (dopo modifiche da API).
@@ -286,8 +287,41 @@ func (e *Engine) Session(ctx context.Context, profileID string, force bool) (*my
 		}
 		return nil
 	})
+	e.mu.Lock()
+	e.sessOK[profileID] = time.Now()
+	e.mu.Unlock()
 	e.logf("success", profileID, "login mywellness riuscito per %s (%s)", p.Label, res.DisplayName)
 	return &res.Session, nil
+}
+
+// ensureSession restituisce una sessione VERIFICATA: controlla GetLoginStatus (al più ogni 5 minuti)
+// e rifà il login se il token è scaduto. I token mywellness durano circa un'ora e le API con token
+// scaduto rispondono come anonimo, quindi senza questo controllo isParticipant sarebbe sempre falso.
+func (e *Engine) ensureSession(ctx context.Context, profileID string) (*mywellness.Session, error) {
+	sess, err := e.Session(ctx, profileID, false)
+	if err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	last := e.sessOK[profileID]
+	e.mu.Unlock()
+	if time.Since(last) < 5*time.Minute {
+		return sess, nil
+	}
+	ok, err := e.MW.LoginStatus(ctx, sess)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		e.logf("info", profileID, "sessione mywellness scaduta: nuovo login")
+		if sess, err = e.Session(ctx, profileID, true); err != nil {
+			return nil, err
+		}
+	}
+	e.mu.Lock()
+	e.sessOK[profileID] = time.Now()
+	e.mu.Unlock()
+	return sess, nil
 }
 
 // Calendar restituisce il calendario autenticato del profilo (cache 60 s, o forzato).
@@ -303,7 +337,7 @@ func (e *Engine) Calendar(ctx context.Context, profileID string, force bool) ([]
 		return nil, errors.New("profilo inesistente")
 	}
 	s := e.settings()
-	sess, err := e.Session(ctx, profileID, false)
+	sess, err := e.ensureSession(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -311,6 +345,9 @@ func (e *Engine) Calendar(ctx context.Context, profileID string, force bool) ([]
 	to := from.AddDate(0, 0, max(3, s.DaysAhead))
 	events, err := e.MW.Search(ctx, p.FacilityID, from, to, sess)
 	if errors.Is(err, mywellness.ErrUnauthorized) {
+		e.mu.Lock()
+		delete(e.sessOK, profileID)
+		e.mu.Unlock()
 		if sess, err = e.Session(ctx, profileID, true); err == nil {
 			events, err = e.MW.Search(ctx, p.FacilityID, from, to, sess)
 		}
@@ -559,7 +596,7 @@ func (e *Engine) Retry(id string) {
 
 // Unbook disdice una prenotazione (dell'item o fatta direttamente su mywellness) e segna l'item come disdetto.
 func (e *Engine) Unbook(ctx context.Context, profileID, classID string, partitionDate int, by string) error {
-	sess, err := e.Session(ctx, profileID, false)
+	sess, err := e.ensureSession(ctx, profileID)
 	if err != nil {
 		return err
 	}
@@ -590,7 +627,7 @@ func (e *Engine) Unbook(ctx context.Context, profileID, classID string, partitio
 
 // LeaveWaitingList esce dalla lista d'attesa su mywellness e segna l'item come disdetto.
 func (e *Engine) LeaveWaitingList(ctx context.Context, profileID, classID string, partitionDate int, by string) error {
-	sess, err := e.Session(ctx, profileID, false)
+	sess, err := e.ensureSession(ctx, profileID)
 	if err != nil {
 		return err
 	}
@@ -686,7 +723,7 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 	}
 	now := time.Now()
 	e.setItem(id, func(x *model.Item) { x.Attempts++; x.LastCheck = &now })
-	sess, err := e.Session(ctx, it.ProfileID, false)
+	sess, err := e.ensureSession(ctx, it.ProfileID)
 	if err != nil {
 		e.setItem(id, func(x *model.Item) { x.LastMessage = "Login mywellness non riuscito" })
 		return
@@ -808,7 +845,7 @@ func (e *Engine) dayEvents(ctx context.Context, profileID string, day time.Time)
 	if !found {
 		return nil, errors.New("profilo inesistente")
 	}
-	sess, err := e.Session(ctx, profileID, false)
+	sess, err := e.ensureSession(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}

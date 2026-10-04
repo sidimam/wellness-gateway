@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.13 (2026-10-04)
+- **Fix**: mywellness session tokens expire after about an hour and the schedule API then answers as an anonymous user (no `isParticipant`), so active bookings dropped to 0 and limits/cancellation detection were wrong. The gateway now verifies the session with `GetLoginStatus` (at most every 5 minutes) before authenticated reads, books, cancellations and waiting-list operations, and logs in again automatically when the token is invalid.
+
 ## v0.1.12 (2026-10-04)
 - User isolation: devices that log in with `selfOnly: true` (the iOS app) see only the signed-in person's profile, items, bookings and log, even for administrators; user management is web-only. Existing app devices are migrated. Regular users are isolated on the web too; administrators keep the family view in the web UI.
 

@@ -214,6 +214,30 @@ func joinErrs(errs []apiErr) string {
 	return strings.Join(parts, "; ")
 }
 
+// LoginStatus verifica se il token è ancora valido (il widget lo fa ogni 10 minuti).
+// Nota: con token scaduto le altre API rispondono 200 "come anonimo", quindi questo controllo è indispensabile.
+func (c *Client) LoginStatus(ctx context.Context, sess *Session) (bool, error) {
+	if sess == nil || sess.Token == "" {
+		return false, nil
+	}
+	data, resp, err := c.do(ctx, http.MethodPost, svcURL, "/application/"+AppID+"/GetLoginStatus", nil, map[string]any{}, sess)
+	if err != nil {
+		return false, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return false, nil
+	}
+	for _, e := range errorsIn(data) {
+		if e.Field == "TokenNotValid" || e.Details == "TokenNotValid" || e.ErrorMessage == "TokenNotValid" {
+			return false, nil
+		}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, &APIError{Status: resp.StatusCode, Message: "stato sessione non disponibile"}
+	}
+	return true, nil
+}
+
 // Facility è un centro.
 type Facility struct {
 	ID   string `json:"id"`
