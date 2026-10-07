@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.14 (2026-10-07)
+- **Fix (limits)**: classes covered by a rule with its own `maxBookings` (e.g. Reformer 3) now have a **separate quota**: they are no longer counted in the profile-wide limit (default 5) and are checked only against their own rule. Before, a profile with 5 active bookings including Reformer classes could not book anything else, and vice versa; this blocked the Reformer booking of 5 October at the Wellness Town club. `activeBookings` in `GET /profiles` now excludes classes with their own quota; `limits` keeps the per-rule counters.
+
 ## v0.1.13 (2026-10-04)
 - **Fix**: mywellness session tokens expire after about an hour and the schedule API then answers as an anonymous user (no `isParticipant`), so active bookings dropped to 0 and limits/cancellation detection were wrong. The gateway now verifies the session with `GetLoginStatus` (at most every 5 minutes) before authenticated reads, books, cancellations and waiting-list operations, and logs in again automatically when the token is invalid.
 

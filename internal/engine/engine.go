@@ -389,9 +389,11 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 	byKey := map[string]mywellness.ClassEvent{}
 	active := 0
 	now := time.Now()
+	settings := e.settings()
 	for _, ev := range events {
 		byKey[ev.Key()] = ev
-		if ev.IsParticipant && ev.Start().After(now) {
+		// le lezioni con una quota propria (es. Reformer 3) non contano nel limite generale
+		if _, own := settings.OwnQuota(ev.Name); ev.IsParticipant && ev.Start().After(now) && !own {
 			active++
 		}
 	}
@@ -659,12 +661,14 @@ func (e *Engine) LeaveWaitingList(ctx context.Context, profileID, classID string
 	return nil
 }
 
+// limitReached verifica il limite generale del profilo (default 5). Le lezioni coperte da una regola
+// con un massimo proprio (es. Reformer 3) hanno una quota separata e sono escluse dal conteggio.
 func (e *Engine) limitReached(profileID string) (bool, int, int) {
 	var active, maxB int
 	e.Store.Read(func(st *model.State) {
 		for _, p := range st.Profiles {
 			if p.ID == profileID {
-				active, maxB = p.ActiveBookings, p.MaxBookings
+				maxB = p.MaxBookings
 			}
 		}
 		now := time.Now()
@@ -672,17 +676,18 @@ func (e *Engine) limitReached(profileID string) (bool, int, int) {
 		e.mu.Lock()
 		if c, ok := e.calendars[profileID]; ok {
 			for _, ev := range c.events {
-				if ev.IsParticipant && ev.Start().After(now) {
+				if _, own := st.Settings.OwnQuota(ev.Name); ev.IsParticipant && ev.Start().After(now) && !own {
 					seen[ev.Key()] = true
 				}
 			}
 		}
 		e.mu.Unlock()
 		for _, it := range st.Items {
-			if it.ProfileID == profileID && it.State == model.StateBooked && it.Start.After(now) && !seen[it.ClassID+"|"+itoa(it.PartitionDate)] {
-				active++
+			if _, own := st.Settings.OwnQuota(it.Name); it.ProfileID == profileID && it.State == model.StateBooked && it.Start.After(now) && !own {
+				seen[it.ClassID+"|"+itoa(it.PartitionDate)] = true
 			}
 		}
+		active = len(seen)
 	})
 	if maxB <= 0 {
 		maxB = 5
@@ -696,19 +701,9 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 	if !ok {
 		return
 	}
-	if reached, active, maxB := e.limitReached(it.ProfileID); reached {
-		first := it.Attempts == 0
-		e.setItem(id, func(x *model.Item) {
-			x.Attempts++
-			x.LastMessage = fmt.Sprintf("Limite di %d prenotazioni attive raggiunto (%d): riprovo quando se ne libera una", maxB, active)
-		})
-		if first {
-			e.logf("warn", it.ProfileID, "%s %s: limite prenotazioni (%d/%d) raggiunto", it.Name, fmtTime(it.Start), active, maxB)
-		}
-		return
-	}
-	// limite specifico della regola (es. Reformer: massimo 3 attive)
-	if r, ok := e.settings().SpecificRule(it.Name); ok && r.MaxBookings > 0 {
+	// Una lezione con quota propria (es. Reformer: massimo 3) è soggetta SOLO a quella quota;
+	// tutte le altre contano nel limite generale del profilo (default 5).
+	if r, own := e.settings().OwnQuota(it.Name); own {
 		if n := e.RuleCount(it.ProfileID, r); n >= r.MaxBookings {
 			first := it.Attempts == 0
 			e.setItem(id, func(x *model.Item) {
@@ -720,6 +715,16 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 			}
 			return
 		}
+	} else if reached, active, maxB := e.limitReached(it.ProfileID); reached {
+		first := it.Attempts == 0
+		e.setItem(id, func(x *model.Item) {
+			x.Attempts++
+			x.LastMessage = fmt.Sprintf("Limite di %d prenotazioni attive raggiunto (%d): riprovo quando se ne libera una", maxB, active)
+		})
+		if first {
+			e.logf("warn", it.ProfileID, "%s %s: limite prenotazioni (%d/%d) raggiunto", it.Name, fmtTime(it.Start), active, maxB)
+		}
+		return
 	}
 	now := time.Now()
 	e.setItem(id, func(x *model.Item) { x.Attempts++; x.LastCheck = &now })

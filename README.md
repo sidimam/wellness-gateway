@@ -12,7 +12,7 @@ Why a server? iOS never runs an app at an exact time in the background, and the 
 - **Scheduler**: books at the opening time reported by the club for each class (`bookingOpensOn`), with a configurable lead (ms) and a burst of retries after opening. Per-class **opening rules** (text contained in the class name → days before + time, `*` for everything else) are used when the club reports nothing or when you turn "follow the club" off.
 - **Watching**: when a class is full the gateway joins the waiting list and polls the schedule every N seconds (tighter in the last useful hours before the 2-hour cancellation deadline). As soon as `availablePlaces > 0` it calls `Book`.
 - **Recurrences**: "every Tuesday at 17:30" rules attach new occurrences as they appear in the schedule.
-- **Limit**: default 5 active bookings per profile (club rule), counting bookings made directly on mywellness too.
+- **Limits**: default 5 active bookings per profile (club rule), counting bookings made directly on mywellness too; rules with their own maximum (e.g. Reformer 3) are a separate quota that does not count in the 5.
 - **Two-way sync**: bookings made in the official app/website show up (and can be cancelled from here); a class cancelled there is marked *cancelled* and is **not** rebooked.
 - **Push**: APNs HTTP/2 with JWT (ES256), `interruption-level: time-sensitive`, no third-party libraries.
 - **Web UI** with a first-run walkthrough (admin → profiles → push → connect the app), bookings, schedule with class pictures, profiles, users, settings and activity log.

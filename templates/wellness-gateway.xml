@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-04 (v0.1.13)
+  <Changes>### 2026-10-07 (v0.1.14)
+- Fix: classes with a per-rule maximum (e.g. Reformer 3) are a separate quota and no longer count in the profile limit (5).
+
+### 2026-10-04 (v0.1.13)
 - Fix: verify the mywellness session (tokens expire hourly and APIs silently answer as anonymous); automatic re-login.
 
 ### 2026-10-04 (v0.1.12)

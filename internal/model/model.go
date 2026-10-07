@@ -100,6 +100,16 @@ func (s Settings) SpecificRule(className string) (OpenRule, bool) {
 	return OpenRule{}, false
 }
 
+// OwnQuota restituisce la regola con un massimo proprio (es. Reformer 3) che copre la lezione:
+// queste lezioni hanno una quota separata e NON contano nel limite generale del profilo.
+func (s Settings) OwnQuota(className string) (OpenRule, bool) {
+	r, ok := s.SpecificRule(className)
+	if ok && r.MaxBookings > 0 {
+		return r, true
+	}
+	return OpenRule{}, false
+}
+
 // Rule restituisce la regola applicabile a una lezione.
 func (s Settings) Rule(className string) OpenRule {
 	var def *OpenRule
