@@ -20,9 +20,13 @@ const (
 	AppName    = "enduserweb"
 	AppVersion = "1.0.0"
 	Culture    = "it-IT"
-	coreURL    = "https://core.mywellness.com"
-	calURL     = "https://calendar.mywellness.com"
-	svcURL     = "https://services.mywellness.com"
+)
+
+// Indirizzi delle API (variabili, non costanti, per poterli sostituire nei test).
+var (
+	coreURL = "https://core.mywellness.com"
+	calURL  = "https://calendar.mywellness.com"
+	svcURL  = "https://services.mywellness.com"
 )
 
 // Rome è il fuso del centro.
