@@ -225,8 +225,8 @@ async function profilesView() {
   const load = async () => {
     profiles = await api('/profiles');
     users = admin ? await api('/users') : [me.user];
-    $('#ulist').innerHTML = `<table><tr><th>Nome utente</th><th>Nome</th><th>Ruolo</th><th>Account mywellness</th><th>Centro</th><th>Attive</th><th>Login mywellness</th></tr>${users.map(u => { const pr = profiles.find(p => p.userId === u.id); return `<tr class="urow" data-u="${u.id}" style="cursor:pointer"><td><div class="row" style="gap:8px">${avatar(pr, u.displayName)}<b>${esc(u.username)}</b></div></td><td>${esc(u.displayName)}${pr && pr.displayName ? `<br><small class="mut">${esc(pr.displayName)}${pr.nickName ? ' · ' + esc(pr.nickName) : ''}</small>` : ''}</td><td>${u.isAdmin ? '<span class="badge bursting">admin</span>' : '<span class="badge">utente</span>'}</td>
-      <td>${pr ? `${esc(pr.username)}${pr.ownerUserIds && pr.ownerUserIds.length ? ' 🔒' : ''}` : '<span class="badge failed">nessuno</span>'}</td><td>${pr ? esc(pr.facilityName) : ''}</td><td>${pr ? `${pr.activeBookings}/${pr.maxBookings}` : ''}</td>
+    $('#ulist').innerHTML = `<table><tr><th>Nome utente</th><th>Nome</th><th>Ruolo</th><th>Account mywellness</th><th>Centro</th><th>Attive</th><th>Login mywellness</th></tr>${users.map(u => { const mineAll = profiles.filter(p => p.userId === u.id); const pr = mineAll[0]; return `<tr class="urow" data-u="${u.id}" style="cursor:pointer"><td><div class="row" style="gap:8px">${avatar(pr, u.displayName)}<b>${esc(u.username)}</b></div></td><td>${esc(u.displayName)}${pr && pr.displayName ? `<br><small class="mut">${esc(pr.displayName)}${pr.nickName ? ' · ' + esc(pr.nickName) : ''}</small>` : ''}</td><td>${u.isAdmin ? '<span class="badge bursting">admin</span>' : '<span class="badge">utente</span>'}</td>
+      <td>${pr ? `${esc(pr.username)}${pr.ownerUserIds && pr.ownerUserIds.length ? ' 🔒' : ''}` : '<span class="badge failed">nessuno</span>'}</td><td>${mineAll.map(p => esc(p.facilityName)).join('<br>')}</td><td>${mineAll.map(p => `${p.activeBookings}/${p.maxBookings}`).join('<br>')}</td>
       <td>${pr ? (pr.lastLoginError ? `<span class="lv-error">${esc(pr.lastLoginError)}</span>` : pr.lastLoginAt ? `<span class="lv-success">ok ${fmtD(pr.lastLoginAt)}</span>` : '—') : ''}</td></tr>`; }).join('')}</table>`;
     main.querySelectorAll('.urow').forEach(r => r.onclick = () => openUser(users.find(u => u.id === r.dataset.u)));
     const orph = profiles.filter(p => !p.userId);
@@ -235,13 +235,22 @@ async function profilesView() {
     main.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => { if (confirm(i18n.t('Rimuovere il profilo e le sue lezioni seguite?'))) { await api('/profiles/' + b.dataset.delp, { method: 'DELETE' }); load(); } });
   };
 
-  /* finestra utente: accesso + ruolo + account mywellness */
+  /* finestra utente: accesso + ruolo + account mywellness (uno o più centri) */
   const openUser = (u) => {
     const isNew = !u; u = u || { username: '', displayName: '', isAdmin: false };
-    const pr = isNew ? null : profiles.find(p => p.userId === u.id);
+    const mine = isNew ? [] : profiles.filter(p => p.userId === u.id);   // un profilo per ogni centro
+    const pr = mine[0] || null;
     const orph = profiles.filter(p => !p.userId);
     const canEdit = admin || (!isNew && u.id === me.user.id);
     const dlg = $('#udlg');
+    const centerRows = mine.map(p => `<div class="grid" data-c="${p.id}" style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px">
+        <div><label>Centro</label><input value="${esc(p.facilityName)}" disabled></div>
+        <div><label>Etichetta</label><input data-cl="${p.id}" value="${esc(p.label)}"></div>
+        <div><label>Massimo prenotazioni attive</label><input data-cm="${p.id}" type="number" min="1" value="${p.maxBookings}"></div>
+        <div><label>Prenotazioni attive</label><input value="${p.activeBookings}/${p.maxBookings}${(p.limits || []).map(l => ` · ${l.pattern} ${l.active}/${l.max}`).join('')}" disabled></div>
+        <div style="grid-column:1/-1" class="row"><small class="mut">${p.lastLoginError ? `<span class="lv-error">${esc(p.lastLoginError)}</span>` : p.lastLoginAt ? `<span class="lv-success">login ok ${fmtD(p.lastLoginAt)}</span>` : ''}</small><span style="flex:1"></span>
+          <button type="button" class="small" data-relogin2="${p.id}">Rifai login mywellness</button>${mine.length > 1 ? `<button type="button" class="danger" data-delc="${p.id}">Rimuovi centro</button>` : ''}</div>
+      </div>`).join('');
     dlg.innerHTML = `<form method="dialog" class="dlg"><div class="row" style="gap:12px">${isNew ? '' : avatar(pr, u.displayName, 56)}<div><h2 style="margin:0">${isNew ? 'Nuovo utente' : esc(u.displayName || u.username)}</h2>${pr ? `<small class="mut">${esc(pr.displayName || '')}${pr.email ? ' · ' + esc(pr.email) : ''}</small>` : ''}</div></div>
       <h3>Accesso al gateway</h3><div class="grid">
         <div><label>Nome utente (per entrare)</label><input id="d-u" value="${esc(u.username)}" autocomplete="off" ${canEdit ? '' : 'disabled'}></div>
@@ -253,11 +262,13 @@ async function profilesView() {
       ${pr ? `<div class="grid">
         <div><label>Email mywellness</label><input value="${esc(pr.username)}" disabled></div>
         <div><label>Nuova password mywellness (vuoto = invariata)</label><input id="d-mp" type="password" autocomplete="new-password"></div>
-        <div><label>Etichetta</label><input id="d-ml" value="${esc(pr.label)}"></div>
-        <div><label>Massimo prenotazioni attive</label><input id="d-mm" type="number" min="1" value="${pr.maxBookings}"></div>
-        <div><label>Visibilità</label><select id="d-mv"><option value="0" ${pr.ownerUserIds && pr.ownerUserIds.length ? '' : 'selected'}>Famiglia (tutti gli utenti)</option><option value="1" ${pr.ownerUserIds && pr.ownerUserIds.length ? 'selected' : ''}>Solo questa persona</option></select></div>
-        <div><label>Centro</label><input value="${esc(pr.facilityName)}" disabled></div></div>
-        <p class="row"><button type="button" class="small" id="d-relogin">Rifai login mywellness</button><button type="button" class="small" id="d-unlink">Scollega account</button><button type="button" class="danger" id="d-delp">Rimuovi account</button></p>`
+        <div><label>Visibilità</label><select id="d-mv"><option value="0" ${pr.ownerUserIds && pr.ownerUserIds.length ? '' : 'selected'}>Famiglia (tutti gli utenti)</option><option value="1" ${pr.ownerUserIds && pr.ownerUserIds.length ? 'selected' : ''}>Solo questa persona</option></select></div></div>
+        <h3>Centri Technogym (${mine.length})</h3>
+        <p class="mut">Lo stesso account mywellness può essere iscritto a più centri: ogni centro ha il suo calendario, le sue lezioni seguite e il suo limite di prenotazioni. Nell'app si passa da un centro all'altro con il menu in alto.</p>
+        ${centerRows}
+        <div class="grid" style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px"><div><label>Aggiungi centro (URL widget, es. wellnesstown)</label><input id="d-newc" placeholder="es. wellnesstown"></div><div><label>Massimo prenotazioni attive</label><input id="d-newcm" type="number" min="1" value="${pr.maxBookings}"></div>
+        <div style="align-self:end"><button type="button" class="small" id="d-addc">+ Aggiungi centro</button></div></div>
+        <p class="row" style="margin-top:12px"><button type="button" class="small" id="d-unlink">Scollega account</button><button type="button" class="danger" id="d-delp">Rimuovi account</button></p>`
       : `<p class="mut">${isNew ? "Obbligatorio per gli utenti normali (senza account non vedrebbero nulla); facoltativo per un amministratore solo locale, che vede e gestisce tutti i profili." : 'Nessun account collegato.'}</p>
         ${orph.length && !isNew ? `<label>Assegna un account esistente</label><select id="d-orph"><option value="">— nuovo account qui sotto —</option>${orph.map(p => `<option value="${p.id}">${esc(p.label)} · ${esc(p.username)}</option>`).join('')}</select>` : ''}
         <div class="grid" id="d-newmw">
@@ -291,9 +302,11 @@ async function profilesView() {
             else if ($('#d-p').value) { msg(m, i18n.t('Per cambiare la tua password usa l\'app o chiedi a un amministratore.')); }
           }
           if (pr) {
-            const body = { label: $('#d-ml').value, maxBookings: +$('#d-mm').value, private: $('#d-mv').value === '1' };
-            if ($('#d-mp').value) body.password = $('#d-mp').value;
-            await api('/profiles/' + pr.id, { method: 'PUT', body });
+            for (const p of mine) {
+              const body = { label: dlg.querySelector(`[data-cl="${p.id}"]`).value, maxBookings: +dlg.querySelector(`[data-cm="${p.id}"]`).value, private: $('#d-mv').value === '1' };
+              if ($('#d-mp').value) body.password = $('#d-mp').value;   // stessa password per tutti i centri dell'account
+              await api('/profiles/' + p.id, { method: 'PUT', body });
+            }
           } else if ($('#d-orph') && $('#d-orph').value) {
             await api('/profiles/' + $('#d-orph').value, { method: 'PUT', body: { userId } });
           } else if ($('#d-mu') && $('#d-mu').value) {
@@ -306,9 +319,14 @@ async function profilesView() {
       } catch (e) { msg(m, e.message); }
     };
     if ($('#d-del')) $('#d-del').onclick = async () => { if (!confirm(i18n.t('Eliminare utente?'))) return; try { await api('/users/' + u.id, { method: 'DELETE' }); dlg.close(); load(); } catch (e) { msg(m, e.message); } };
-    if ($('#d-relogin')) $('#d-relogin').onclick = async () => { try { await api(`/profiles/${pr.id}/relogin`, { method: 'POST' }); msg(m, i18n.t('Login mywellness riuscito.'), true); } catch (e) { msg(m, e.message); } };
-    if ($('#d-unlink')) $('#d-unlink').onclick = async () => { try { await api('/profiles/' + pr.id, { method: 'PUT', body: { userId: '' } }); dlg.close(); load(); } catch (e) { msg(m, e.message); } };
-    if ($('#d-delp')) $('#d-delp').onclick = async () => { if (!confirm(i18n.t('Rimuovere il profilo e le sue lezioni seguite?'))) return; try { await api('/profiles/' + pr.id, { method: 'DELETE' }); dlg.close(); load(); } catch (e) { msg(m, e.message); } };
+    dlg.querySelectorAll('[data-relogin2]').forEach(b => b.onclick = async () => { try { await api(`/profiles/${b.dataset.relogin2}/relogin`, { method: 'POST' }); msg(m, i18n.t('Login mywellness riuscito.'), true); } catch (e) { msg(m, e.message); } });
+    dlg.querySelectorAll('[data-delc]').forEach(b => b.onclick = async () => { if (!confirm(i18n.t('Rimuovere questo centro e le sue lezioni seguite?'))) return; try { await api('/profiles/' + b.dataset.delc, { method: 'DELETE' }); dlg.close(); await load(); openUser(users.find(x => x.id === u.id)); } catch (e) { msg(m, e.message); } });
+    if ($('#d-addc')) $('#d-addc').onclick = async () => {
+      const url = $('#d-newc').value.trim(); if (!url) { msg(m, i18n.t('Scrivi l\'URL del centro (quello del widget mywellness).')); return; }
+      try { msg(m, i18n.t('Verifica del centro e login…'), true); await api('/profiles', { method: 'POST', body: { facilityUrl: url, maxBookings: +$('#d-newcm').value, copyFromProfileId: pr.id } }); dlg.close(); await load(); openUser(users.find(x => x.id === u.id)); } catch (e) { msg(m, e.message); }
+    };
+    if ($('#d-unlink')) $('#d-unlink').onclick = async () => { try { for (const p of mine) await api('/profiles/' + p.id, { method: 'PUT', body: { userId: '' } }); dlg.close(); load(); } catch (e) { msg(m, e.message); } };
+    if ($('#d-delp')) $('#d-delp').onclick = async () => { if (!confirm(i18n.t('Rimuovere il profilo e le sue lezioni seguite?'))) return; try { for (const p of mine) await api('/profiles/' + p.id, { method: 'DELETE' }); dlg.close(); load(); } catch (e) { msg(m, e.message); } };
   };
   if (admin) $('#newu').onclick = () => openUser(null);
   load();

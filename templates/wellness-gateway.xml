@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-08 (v0.1.15)
+  <Changes>### 2026-10-08 (v0.1.16)
+- Several Technogym clubs per mywellness account (web dialog + iOS club switcher).
+
+### 2026-10-08 (v0.1.15)
 - Aggressive, account-safe watching: public schedule reads every 15 s / 3 s in the last 4 h; quick booking retries.
 - Fix: session verified before reporting a cancellation (no more hourly flapping); mywellness identity stored for the app's profile page.
 

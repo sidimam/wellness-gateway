@@ -538,10 +538,36 @@ type profileInput struct {
 	Private                                bool
 	Mine                                   bool   // il profilo appartiene all'utente chiamante
 	UserID                                 string // (admin) il profilo appartiene a questo utente
+	CopyFromProfileID                      string // altro centro per lo stesso account mywellness: credenziali e proprietario copiati da questo profilo
 }
 
 // createProfile verifica il login mywellness e salva il profilo. owner = utente a cui appartiene (può essere vuoto).
 func (s *Server) createProfile(ctx context.Context, in profileInput, by model.User, owner string) (model.Profile, int, error) {
+	// Più centri per lo stesso account: copia credenziali, proprietario e visibilità dal profilo sorgente.
+	var src *model.Profile
+	if in.CopyFromProfileID != "" {
+		s.Store.Read(func(st *model.State) {
+			for i := range st.Profiles {
+				if st.Profiles[i].ID == in.CopyFromProfileID {
+					c := st.Profiles[i]
+					src = &c
+				}
+			}
+		})
+		if src == nil || !(by.IsAdmin || src.UserID == by.ID || engine.Visible(*src, by.ID, by.IsAdmin)) {
+			return model.Profile{}, 404, errors.New("profilo sorgente non trovato")
+		}
+		pw, err := s.Store.Decrypt(src.PasswordEnc)
+		if err != nil {
+			return model.Profile{}, 500, err
+		}
+		in.Username, in.Password = src.Username, pw
+		owner = src.UserID
+		in.Private = len(src.OwnerUserIDs) > 0
+		if in.MaxBookings <= 0 {
+			in.MaxBookings = src.MaxBookings
+		}
+	}
 	if in.Username == "" || in.Password == "" {
 		return model.Profile{}, 400, errors.New("email e password mywellness obbligatorie")
 	}
@@ -571,8 +597,14 @@ func (s *Server) createProfile(ctx context.Context, in profileInput, by model.Us
 		Token: res.Session.Token, MWUserID: res.Session.UserID, DisplayName: res.DisplayName, UserID: owner,
 		FirstName: res.FirstName, LastName: res.LastName, NickName: res.NickName, Email: res.Email, PictureURL: res.PictureURL, ThumbURL: res.ThumbURL,
 		FacilityURL: fac.URL, FacilityID: fac.ID, FacilityName: fac.Name, MaxBookings: in.MaxBookings, LastLoginAt: &now}
+	if pr.Label == "" && src != nil {
+		pr.Label = src.Label + " · " + fac.Name
+	}
 	if pr.Label == "" {
 		pr.Label = res.DisplayName
+	}
+	if src != nil && len(res.Identity) > 0 {
+		pr.Identity = res.Identity
 	}
 	if in.Private && owner != "" {
 		pr.OwnerUserIDs = []string{owner}

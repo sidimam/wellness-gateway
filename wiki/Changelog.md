@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.16 (2026-10-08)
+- **Several Technogym clubs per mywellness account**: a profile is "one account at one club"; `POST /profiles` with `copyFromProfileId` adds another club for the same account, copying credentials, owner and visibility (no password needed). The web user dialog lists every club of the account (label, limit, counters, re-login, remove) with "+ Add club"; the iOS app shows a club switcher at the top of Classes and Bookings and a Clubs section in the profile page.
+- `GET /profiles` also returns `identity` on profiles created as additional clubs.
+
 ## v0.1.15 (2026-10-08)
 - **Watching ("Osservazione") is now aggressive and account-safe**: free places are read from the **public** schedule (no token, one request per club and day shared by every profile and class) every `pollSeconds` (default **15 s**, minimum 5) and every `nearPollSeconds` (default **3 s**, minimum 2) in the last `nearHours` hours (default 4). An authenticated read every 60 s still updates participation and waiting-list position. A place is taken when `availablePlaces > 0`, `numberOfParticipants < maxParticipants` or the user's `bookingUserStatus` is `CanBook`; the booking is retried up to 3 times 0.7 s apart. Existing settings at the old default (60 s) are migrated to 15 s. Background: on 8 October a Reformer place freed, mywellness notified the waiting list, and the 30 s polling lost the race.
 - **Fix (false cancellations)**: when a schedule read would turn a booked class into "cancelled", the session is verified first (`GetLoginStatus`) and re-read after a new login if the token had expired. This stops the hourly "disdetta rilevata"/"già prenotata" flapping.

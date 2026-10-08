@@ -19,5 +19,6 @@
 - **Watching cadence**: `pollSeconds` (default 15, minimum 5) between public schedule reads; `nearPollSeconds` (default 3, minimum 2) in the last `nearHours` hours (default 4); ±15% jitter. Reads are anonymous (no token), so the cadence does not expose the account; one authenticated read per class every 60 s keeps participation and waiting-list position up to date.
 
 ## Per-profile
+- A profile is one mywellness account **at one club**. The same account can be linked to several clubs: add them from the user dialog (web) or the profile page (iOS); each club keeps its own schedule, tracked classes and limits.
 - **Max active bookings** (default 5) — the club's rule; bookings made on mywellness directly count too. Classes covered by a rule with its own `maxBookings` (e.g. Reformer 3) are excluded from this count.
 - **Visibility**: family or private.
