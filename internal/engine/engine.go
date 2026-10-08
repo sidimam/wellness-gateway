@@ -56,9 +56,18 @@ func (e *Engine) Kick() {
 	}
 }
 
+// settings: impostazioni predefinite (dell'amministratore).
 func (e *Engine) settings() model.Settings {
 	var s model.Settings
 	e.Store.Read(func(st *model.State) { s = st.Settings })
+	return s
+}
+
+// settingsFor: impostazioni che valgono per un profilo = quelle personali dell'utente a cui appartiene,
+// altrimenti le predefinite. Ogni utente del gateway può avere il suo scheduler.
+func (e *Engine) settingsFor(profileID string) model.Settings {
+	var s model.Settings
+	e.Store.Read(func(st *model.State) { s = st.SettingsForProfile(profileID) })
 	return s
 }
 
@@ -72,7 +81,6 @@ func (e *Engine) logf(level, profileID, format string, args ...any) {
 func (e *Engine) Run(ctx context.Context) {
 	e.logf("info", "", "motore avviato")
 	for ctx.Err() == nil {
-		s := e.settings()
 		if time.Since(e.lastFull) > 10*time.Minute {
 			e.RefreshAll(ctx)
 		}
@@ -89,6 +97,7 @@ func (e *Engine) Run(ctx context.Context) {
 				e.logf("warn", it.ProfileID, "scaduta: %s %s", it.Name, fmtTime(it.Start))
 				continue
 			}
+			s := e.settingsFor(it.ProfileID) // impostazioni personali dell'utente del profilo
 			switch it.State {
 			case model.StatePending:
 				fire := fireAt(it, s)
@@ -218,8 +227,7 @@ func (e *Engine) setItem(id string, fn func(*model.Item)) {
 		for i := range st.Items {
 			if st.Items[i].ID == id {
 				fn(&st.Items[i])
-				s := st.Settings
-				st.Items[i].FireAt = fireAt(st.Items[i], s)
+				st.Items[i].FireAt = fireAt(st.Items[i], st.SettingsForProfile(st.Items[i].ProfileID))
 			}
 		}
 		return nil
@@ -345,7 +353,7 @@ func (e *Engine) Calendar(ctx context.Context, profileID string, force bool) ([]
 	if !found {
 		return nil, errors.New("profilo inesistente")
 	}
-	s := e.settings()
+	s := e.settingsFor(profileID)
 	sess, err := e.ensureSession(ctx, profileID)
 	if err != nil {
 		return nil, err
@@ -438,7 +446,7 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 	byKey := map[string]mywellness.ClassEvent{}
 	active := 0
 	now := time.Now()
-	settings := e.settings()
+	settings := e.settingsFor(profileID)
 	for _, ev := range events {
 		byKey[ev.Key()] = ev
 		// le lezioni con una quota propria (es. Reformer 3) non contano nel limite generale
@@ -462,7 +470,7 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 			if o := ev.OpensOn(); o != nil {
 				it.ServerOpensOn = o
 			}
-			it.FireAt = fireAt(*it, st.Settings)
+			it.FireAt = fireAt(*it, st.SettingsForProfile(profileID))
 			switch {
 			case ev.IsParticipant && it.State != model.StateBooked:
 				it.State = model.StateBooked
@@ -534,7 +542,7 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 					probe.State = model.StateBooked
 					probe.LastMessage = "Già prenotata"
 				}
-				probe.FireAt = fireAt(probe, st.Settings)
+				probe.FireAt = fireAt(probe, st.SettingsForProfile(profileID))
 				st.Items = append(st.Items, probe)
 				known[probe.ID] = true
 				added = append(added, probe)
@@ -596,7 +604,7 @@ func (e *Engine) AddItem(ctx context.Context, profileID, classID string, partiti
 		} else if ev.IsInWaitingList {
 			it.State = model.StateWaitingList
 		}
-		it.FireAt = fireAt(it, st.Settings)
+		it.FireAt = fireAt(it, st.SettingsForProfile(profileID))
 		st.Items = append(st.Items, it)
 		sortItems(st.Items)
 		out = it
@@ -722,17 +730,18 @@ func (e *Engine) limitReached(profileID string) (bool, int, int) {
 		}
 		now := time.Now()
 		seen := map[string]bool{}
+		cfg := st.SettingsForProfile(profileID)
 		e.mu.Lock()
 		if c, ok := e.calendars[profileID]; ok {
 			for _, ev := range c.events {
-				if _, own := st.Settings.OwnQuota(ev.Name); ev.IsParticipant && ev.Start().After(now) && !own {
+				if _, own := cfg.OwnQuota(ev.Name); ev.IsParticipant && ev.Start().After(now) && !own {
 					seen[ev.Key()] = true
 				}
 			}
 		}
 		e.mu.Unlock()
 		for _, it := range st.Items {
-			if _, own := st.Settings.OwnQuota(it.Name); it.ProfileID == profileID && it.State == model.StateBooked && it.Start.After(now) && !own {
+			if _, own := cfg.OwnQuota(it.Name); it.ProfileID == profileID && it.State == model.StateBooked && it.Start.After(now) && !own {
 				seen[it.ClassID+"|"+itoa(it.PartitionDate)] = true
 			}
 		}
@@ -752,7 +761,7 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 	}
 	// Una lezione con quota propria (es. Reformer: massimo 3) è soggetta SOLO a quella quota;
 	// tutte le altre contano nel limite generale del profilo (default 5).
-	if r, own := e.settings().OwnQuota(it.Name); own {
+	if r, own := e.settingsFor(it.ProfileID).OwnQuota(it.Name); own {
 		if n := e.RuleCount(it.ProfileID, r); n >= r.MaxBookings {
 			first := it.Attempts == 0
 			e.setItem(id, func(x *model.Item) {
@@ -1014,7 +1023,7 @@ func (e *Engine) notify(profileID, title, body string, priority bool) {
 	var tokens []string
 	prio := priority
 	e.Store.Read(func(st *model.State) {
-		if !st.Settings.PriorityNotifications {
+		if !st.SettingsForProfile(profileID).PriorityNotifications {
 			prio = false
 		}
 		var owners []string

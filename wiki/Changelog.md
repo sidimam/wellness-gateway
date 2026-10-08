@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.17 (2026-10-08)
+- **Per-user scheduler settings**: every gateway user, administrator or not, has their own settings (opening rules with per-rule quota, lead, burst, watching cadence, days ahead, priority notifications). They apply to the classes of that user's profiles. The administrator's old global settings become the **defaults** for users who have not customised anything. `GET/PUT /settings` now read/write the caller's own settings (`custom` tells whether they differ from the defaults), `DELETE /settings` goes back to the defaults, `?scope=default` (admin) edits the defaults. Web UI: Impostazioni editable by everyone, with a scope selector for the administrator; iOS: Scheduler e osservazione editable by everyone, with "Torna alle predefinite".
+
 ## v0.1.16 (2026-10-08)
 - **Several Technogym clubs per mywellness account**: a profile is "one account at one club"; `POST /profiles` with `copyFromProfileId` adds another club for the same account, copying credentials, owner and visibility (no password needed). The web user dialog lists every club of the account (label, limit, counters, re-login, remove) with "+ Add club"; the iOS app shows a club switcher at the top of Classes and Bookings and a Clubs section in the profile page.
 - `GET /profiles` also returns `identity` on profiles created as additional clubs.

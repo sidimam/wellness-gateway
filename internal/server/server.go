@@ -126,7 +126,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/items/{id}/retry", auth(s.retryItem))
 
 	mux.HandleFunc("GET /api/v1/settings", auth(s.getSettings))
-	mux.HandleFunc("PUT /api/v1/settings", admin(s.putSettings))
+	mux.HandleFunc("PUT /api/v1/settings", auth(s.putSettings))      // personali (tutti) o predefinite (?scope=default, admin)
+	mux.HandleFunc("DELETE /api/v1/settings", auth(s.resetSettings)) // torna alle predefinite
 	mux.HandleFunc("GET /api/v1/log", auth(s.getLog))
 
 	mux.HandleFunc("GET /api/v1/users", admin(s.listUsers))
@@ -516,18 +517,18 @@ func (s *Server) profileOut(pr model.Profile, settings model.Settings) profileOu
 
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request, p principal) {
 	var profiles []model.Profile
-	var settings model.Settings
+	var cfgs []model.Settings
 	s.Store.Read(func(st *model.State) {
-		settings = st.Settings
 		for _, pr := range st.Profiles {
 			if engine.Visible(pr, p.user.ID, p.seesAll()) {
 				profiles = append(profiles, pr)
+				cfgs = append(cfgs, st.SettingsForProfile(pr.ID)) // regole dell'utente a cui appartiene il profilo
 			}
 		}
 	})
 	out := []profileOut{}
-	for _, pr := range profiles {
-		out = append(out, s.profileOut(pr, settings))
+	for i, pr := range profiles {
+		out = append(out, s.profileOut(pr, cfgs[i]))
 	}
 	writeJSON(w, 200, out)
 }
@@ -959,9 +960,25 @@ func (s *Server) retryItem(w http.ResponseWriter, r *http.Request, p principal) 
 
 // ---- impostazioni, log, utenti, dispositivi
 
+// settingsOut: impostazioni + "custom" (l'utente ha valori personali diversi dalle predefinite).
+type settingsOut struct {
+	model.Settings
+	Custom bool `json:"custom"`
+}
+
+// Ogni utente ha le SUE impostazioni dello scheduler (regole, anticipo, osservazione…), amministratore o no.
+// Le predefinite (st.Settings) sono quelle che valgono per chi non ha personalizzato nulla e le modifica solo l'admin
+// con ?scope=default.
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request, p principal) {
-	var out model.Settings
-	s.Store.Read(func(st *model.State) { out = st.Settings })
+	var out settingsOut
+	def := r.URL.Query().Get("scope") == "default"
+	s.Store.Read(func(st *model.State) {
+		if def {
+			out.Settings = st.Settings
+		} else {
+			out.Settings, out.Custom = st.SettingsForUser(p.user.ID), st.HasUserSettings(p.user.ID)
+		}
+	})
 	writeJSON(w, 200, out)
 }
 
@@ -972,9 +989,39 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, p principal
 		return
 	}
 	engine.Normalize(&in)
-	_ = s.Store.Update(func(st *model.State) error { st.Settings = in; return nil })
+	def := r.URL.Query().Get("scope") == "default"
+	if def && !p.user.IsAdmin {
+		writeErr(w, 403, "solo l'amministratore modifica le impostazioni predefinite")
+		return
+	}
+	_ = s.Store.Update(func(st *model.State) error {
+		if def {
+			st.Settings = in
+		} else {
+			if st.UserSettings == nil {
+				st.UserSettings = map[string]model.Settings{}
+			}
+			st.UserSettings[p.user.ID] = in
+		}
+		return nil
+	})
+	s.Store.AddLog("info", "", "impostazioni "+map[bool]string{true: "predefinite", false: "personali"}[def]+" salvate da "+p.user.Username)
 	s.Engine.Kick()
-	writeJSON(w, 200, in)
+	writeJSON(w, 200, settingsOut{Settings: in, Custom: !def})
+}
+
+// resetSettings elimina le impostazioni personali dell'utente: tornano a valere le predefinite.
+func (s *Server) resetSettings(w http.ResponseWriter, r *http.Request, p principal) {
+	var out settingsOut
+	_ = s.Store.Update(func(st *model.State) error {
+		if st.UserSettings != nil {
+			delete(st.UserSettings, p.user.ID)
+		}
+		out.Settings = st.Settings
+		return nil
+	})
+	s.Engine.Kick()
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) getLog(w http.ResponseWriter, r *http.Request, p principal) {

@@ -201,10 +201,40 @@ type LogLine struct {
 
 // State è l'intero stato persistito.
 type State struct {
-	Users    []User    `json:"users"`
-	Devices  []Device  `json:"devices"`
-	Profiles []Profile `json:"profiles"`
-	Items    []Item    `json:"items"`
-	Settings Settings  `json:"settings"`
-	Log      []LogLine `json:"log"`
+	Users        []User              `json:"users"`
+	Devices      []Device            `json:"devices"`
+	Profiles     []Profile           `json:"profiles"`
+	Items        []Item              `json:"items"`
+	Settings     Settings            `json:"settings"`               // impostazioni predefinite (le modifica l'amministratore)
+	UserSettings map[string]Settings `json:"userSettings,omitempty"` // impostazioni personali per utente del gateway (ID utente → impostazioni)
+	Log          []LogLine           `json:"log"`
+}
+
+// SettingsForUser restituisce le impostazioni personali dell'utente, o quelle predefinite se non ne ha.
+func (st *State) SettingsForUser(userID string) Settings {
+	if userID != "" && st.UserSettings != nil {
+		if s, ok := st.UserSettings[userID]; ok {
+			return s
+		}
+	}
+	return st.Settings
+}
+
+// HasUserSettings: l'utente ha impostazioni personali diverse dalle predefinite.
+func (st *State) HasUserSettings(userID string) bool {
+	if st.UserSettings == nil {
+		return false
+	}
+	_, ok := st.UserSettings[userID]
+	return ok
+}
+
+// SettingsForProfile: le impostazioni dell'utente a cui appartiene il profilo (o le predefinite).
+func (st *State) SettingsForProfile(profileID string) Settings {
+	for _, p := range st.Profiles {
+		if p.ID == profileID {
+			return st.SettingsForUser(p.UserID)
+		}
+	}
+	return st.Settings
 }

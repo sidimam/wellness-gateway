@@ -333,15 +333,19 @@ async function profilesView() {
 }
 
 /* ---------- impostazioni ---------- */
-async function settings() {
-  const s = await api('/settings'); const st = await api('/status');
-  const ro = !me.user.isAdmin;
+async function settings(scope) {
+  scope = scope || 'mine';
+  const q = scope === 'default' ? '?scope=default' : '';
+  const s = await api('/settings' + q); const st = await api('/status');
+  const ro = false; // ogni utente modifica le PROPRIE impostazioni; l'amministratore anche le predefinite (scope=default)
   main.innerHTML = `<div class="card"><h1>Impostazioni</h1>
     <h2>Aspetto e lingua</h2><div class="grid">
       <div><label>Tema</label><select id="theme"><option value="system">Sistema</option><option value="light">Chiaro</option><option value="dark">Scuro</option></select></div>
       <div><label>Lingua</label><select id="lang"><option value="it">Italiano</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></div>
     </div><p class="mut">Valgono per questo browser.</p></div>
     <div class="card"><h2>Motore</h2>
+    <p class="mut">${me.user.isAdmin ? `<label>Stai modificando</label><select id="scope"><option value="mine" ${scope === 'mine' ? 'selected' : ''}>Le mie impostazioni</option><option value="default" ${scope === 'default' ? 'selected' : ''}>Le impostazioni predefinite (per chi non ha le sue)</option></select>` : ''}
+    ${scope === 'mine' ? (s.custom ? 'Queste sono le tue impostazioni personali: valgono per le tue lezioni. <button type="button" class="small" id="reset">Torna alle predefinite</button>' : 'Stai usando le impostazioni predefinite: salvando diventano le tue impostazioni personali.') : 'Valgono per tutti gli utenti che non hanno impostazioni personali.'}</p>
     <label><input type="checkbox" id="fs" ${s.followServerOpenTime ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Segui l'orario di apertura comunicato dal centro</label>
     <h2 style="margin-top:14px">Regole di prenotazione (quanti giorni prima apre ogni tipo di lezione)</h2>
     <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:01, massimo 3 prenotazioni attive); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre. L'<b>ora</b> viene sempre dalla regola; con "Segui l'orario del centro" attivo il <b>giorno</b> di apertura è quello comunicato da mywellness, altrimenti "giorni prima". "Max prenotazioni" è una <b>quota separata</b> per quel tipo di lezione (es. Reformer 3): quelle lezioni non contano nel limite del profilo (0 = nessuna quota propria, contano nel limite del profilo).</p>
@@ -374,8 +378,10 @@ async function settings() {
   };
   drawRules();
   $('#addr') && ($('#addr').onclick = () => { rules.splice(Math.max(0, rules.length - 1), 0, { pattern: '', daysBefore: 3, hour: 5, minute: 0 }); drawRules(); });
+  if ($('#scope')) $('#scope').onchange = () => settings($('#scope').value);
+  if ($('#reset')) $('#reset').onclick = async () => { if (!confirm(i18n.t('Tornare alle impostazioni predefinite?'))) return; await api('/settings', { method: 'DELETE' }); settings('mine'); };
   $('#save') && ($('#save').onclick = async () => {
-    try { await api('/settings', { method: 'PUT', body: { followServerOpenTime: $('#fs').checked, openRules: rules.filter(r => r.pattern.trim()), leadMilliseconds: +$('#lead').value, burstSeconds: +$('#burst').value, pollSeconds: +$('#poll').value, nearPollSeconds: +$('#npoll').value, nearHours: +$('#nhours').value, daysAhead: +$('#days').value, priorityNotifications: $('#prio').checked } }); msg($('#m'), 'Impostazioni salvate.', true); } catch (e) { msg($('#m'), e.message); }
+    try { await api('/settings' + q, { method: 'PUT', body: { followServerOpenTime: $('#fs').checked, openRules: rules.filter(r => r.pattern.trim()), leadMilliseconds: +$('#lead').value, burstSeconds: +$('#burst').value, pollSeconds: +$('#poll').value, nearPollSeconds: +$('#npoll').value, nearHours: +$('#nhours').value, daysAhead: +$('#days').value, priorityNotifications: $('#prio').checked } }); msg($('#m'), 'Impostazioni salvate.', true); } catch (e) { msg($('#m'), e.message); }
   });
   $('#tn').onclick = async () => { const r = await api('/devices/test-notification', { method: 'POST' }); $('#tnm').textContent = r.push ? `inviata a ${r.sent} dispositivi` : 'APNs non configurato'; };
 }

@@ -11,7 +11,8 @@
 | `WG_SECRET_KEY` | random in `secret.key` | Encryption passphrase |
 | `TZ` | `Europe/Rome` | Timezone |
 
-## Engine settings (web UI → Impostazioni, admin only)
+## Engine settings (web UI → Impostazioni; personal for every user, defaults set by the admin)
+- Each gateway user has **their own** scheduler settings, applied to the classes of their profiles; the values below are the defaults used until a user saves their own. The administrator edits the defaults with the scope selector ("Le impostazioni predefinite"); any user can go back to the defaults with "Torna alle predefinite" (web) or "Torna alle predefinite" (iOS).
 - **Follow the club's opening time** (default on): the opening *day* comes from `bookingOpensOn` reported by mywellness; the *time of day* always comes from the matching rule. Off: day = class day − rule's days before.
 - **Per-rule limit (separate quota)**: a named rule can carry `maxBookings` (e.g. Reformer 3). Classes covered by such a rule have their **own quota**: they are checked only against the rule's maximum and are **not counted** in the profile-wide limit. A rule with `maxBookings` 0 has no quota of its own and its classes count in the profile limit.
 - **Opening rules**: text contained in the class name → days before + time; `*` is the default rule. Example for Wellness Town: `Reformer` → 3 days 05:00, `*` → 7 days 05:00. Rules without a name are ignored.

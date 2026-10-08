@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-08 (v0.1.16)
+  <Changes>### 2026-10-08 (v0.1.17)
+- Per-user scheduler settings (rules, lead, watching cadence…); the admin's settings become the defaults.
+
+### 2026-10-08 (v0.1.16)
 - Several Technogym clubs per mywellness account (web dialog + iOS club switcher).
 
 ### 2026-10-08 (v0.1.15)
