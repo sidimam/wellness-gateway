@@ -140,6 +140,18 @@ type LoginResult struct {
 	Email       string
 	PictureURL  string
 	ThumbURL    string
+	Identity    map[string]any // userContext completo (senza token/password)
+}
+
+// HasPlace: la lezione ha un posto libero secondo il calendario (pubblico o autenticato).
+func (e ClassEvent) HasPlace() bool {
+	if e.AvailablePlaces > 0 {
+		return true
+	}
+	if e.MaxParticipants > 0 && e.NumberOfParticipants < e.MaxParticipants {
+		return true
+	}
+	return e.BookingInfo != nil && e.BookingInfo.BookingUserStatus == "CanBook"
 }
 
 // Login autentica con email/username e password.
@@ -150,9 +162,10 @@ func (c *Client) Login(ctx context.Context, username, password string) (*LoginRe
 		return nil, err
 	}
 	var out struct {
-		Result      string `json:"result"`
-		Token       string `json:"token"`
-		UserContext *struct {
+		Result         string          `json:"result"`
+		Token          string          `json:"token"`
+		UserContextRaw json.RawMessage `json:"userContext"`
+		UserContext    *struct {
 			ID              json.RawMessage `json:"id"`
 			FirstName       string          `json:"firstName"`
 			LastName        string          `json:"lastName"`
@@ -160,12 +173,15 @@ func (c *Client) Login(ctx context.Context, username, password string) (*LoginRe
 			Email           string          `json:"email"`
 			PictureURL      string          `json:"pictureUrl"`
 			ThumbPictureURL string          `json:"thumbPictureUrl"`
-		} `json:"userContext"`
+		} `json:"-"`
 		AccountLockedInfo *struct {
 			BlockedFor int `json:"blockedFor"`
 		} `json:"accountLockedInfo"`
 	}
 	_ = json.Unmarshal(data, &out)
+	if len(out.UserContextRaw) > 0 {
+		_ = json.Unmarshal(out.UserContextRaw, &out.UserContext)
+	}
 	if errs := errorsIn(data); len(errs) > 0 {
 		return nil, &APIError{Status: resp.StatusCode, Message: joinErrs(errs), Field: errs[0].Field}
 	}
@@ -202,8 +218,21 @@ func (c *Client) Login(ctx context.Context, username, password string) (*LoginRe
 	uc := out.UserContext
 	pic := strings.Replace(uc.PictureURL, "http://", "https://", 1)
 	thumb := strings.Replace(uc.ThumbPictureURL, "http://", "https://", 1)
+	identity := map[string]any{}
+	_ = json.Unmarshal(out.UserContextRaw, &identity)
+	for k := range identity {
+		l := strings.ToLower(k)
+		if strings.Contains(l, "token") || strings.Contains(l, "password") || strings.Contains(l, "secret") {
+			delete(identity, k)
+		}
+	}
+	for _, k := range []string{"pictureUrl", "thumbPictureUrl"} {
+		if v, ok := identity[k].(string); ok {
+			identity[k] = strings.Replace(v, "http://", "https://", 1)
+		}
+	}
 	return &LoginResult{Session: Session{Token: token, UserID: id}, DisplayName: name, FirstName: uc.FirstName, LastName: uc.LastName,
-		NickName: uc.NickName, Email: uc.Email, PictureURL: pic, ThumbURL: thumb}, nil
+		NickName: uc.NickName, Email: uc.Email, PictureURL: pic, ThumbURL: thumb, Identity: identity}, nil
 }
 
 func joinErrs(errs []apiErr) string {
@@ -291,6 +320,7 @@ type ClassEvent struct {
 	IsParticipant        bool         `json:"isParticipant"`
 	IsInWaitingList      bool         `json:"isInWaitingList"`
 	WaitingListPosition  int          `json:"waitingListPosition"`
+	WaitingListCounter   int          `json:"waitingListCounter"`
 	PictureURL           string       `json:"pictureUrl"`
 	BookingInfo          *BookingInfo `json:"bookingInfo"`
 }

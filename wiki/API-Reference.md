@@ -10,7 +10,7 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 - `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
 
 ## Profiles
-- `GET /profiles` → visible profiles (`id, label, username, displayName, facilityUrl, facilityId, facilityName, maxBookings, ownerUserIds, lastLoginAt, lastLoginError, activeBookings`)
+- `GET /profiles` → visible profiles (`id, label, username, displayName, firstName, lastName, nickName, email, pictureUrl, thumbUrl, identity, facilityUrl, facilityId, facilityName, maxBookings, ownerUserIds, lastLoginAt, lastLoginError, activeBookings, limits`); `identity` is the mywellness `userContext` object as returned at login (tokens and passwords removed)
 - `POST /profiles` `{label, username, password, facilityUrl, maxBookings, private, mine, userId}` — verifies the mywellness login before saving; `mine: true` makes it the caller's own profile, `userId` (admin) assigns it to another user
 - `PUT /profiles/{id}` `{label?, password?, maxBookings?, private?}`, `DELETE /profiles/{id}`, `POST /profiles/{id}/relogin`
 - `GET /profiles/{id}/classes?q=&refresh=1` → schedule for the next *daysAhead* days: upstream fields plus `start`, `end`, `opensOn`, `tracked` (item, if any)

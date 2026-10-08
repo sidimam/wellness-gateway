@@ -326,12 +326,14 @@ async function settings() {
     <div class="card"><h2>Motore</h2>
     <label><input type="checkbox" id="fs" ${s.followServerOpenTime ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Segui l'orario di apertura comunicato dal centro</label>
     <h2 style="margin-top:14px">Regole di prenotazione (quanti giorni prima apre ogni tipo di lezione)</h2>
-    <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:01, massimo 3 prenotazioni attive); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre. L'<b>ora</b> viene sempre dalla regola; con "Segui l'orario del centro" attivo il <b>giorno</b> di apertura è quello comunicato da mywellness, altrimenti "giorni prima". "Max prenotazioni" limita le prenotazioni attive di quel tipo di lezione, in aggiunta al limite del profilo (0 = nessun limite specifico).</p>
+    <p class="mut">Puoi avere tutte le regole che vuoi: in ogni riga scrivi il testo da cercare nel nome della lezione (es. <b>Reformer</b> → 3 giorni prima alle 05:01, massimo 3 prenotazioni attive); la prima regola che corrisponde decide, la riga <b>*</b> vale per tutte le altre. L'<b>ora</b> viene sempre dalla regola; con "Segui l'orario del centro" attivo il <b>giorno</b> di apertura è quello comunicato da mywellness, altrimenti "giorni prima". "Max prenotazioni" è una <b>quota separata</b> per quel tipo di lezione (es. Reformer 3): quelle lezioni non contano nel limite del profilo (0 = nessuna quota propria, contano nel limite del profilo).</p>
     <div id="rules"></div>${ro ? '' : '<p><button class="primary" id="addr">+ Aggiungi regola</button></p>'}
     <div class="grid" style="margin-top:14px">
       <div><label>Anticipo (ms)</label><input id="lead" type="number" value="${s.leadMilliseconds}" ${ro ? 'disabled' : ''}></div>
       <div><label>Insisti dopo l'apertura (s)</label><input id="burst" type="number" value="${s.burstSeconds}" ${ro ? 'disabled' : ''}></div>
-      <div><label>Osservazione: controlla ogni (s)</label><input id="poll" type="number" min="15" value="${s.pollSeconds}" ${ro ? 'disabled' : ''} title="Ritmo normale; nelle 4 ore prima della lezione il gateway controlla il doppio più spesso"></div>
+      <div><label>Osservazione: controlla ogni (s)</label><input id="poll" type="number" min="5" value="${s.pollSeconds}" ${ro ? 'disabled' : ''} title="Lettura pubblica del calendario (senza token): non espone l'account"></div>
+      <div><label>Osservazione vicino alla lezione: ogni (s)</label><input id="npoll" type="number" min="2" value="${s.nearPollSeconds || 3}" ${ro ? 'disabled' : ''}></div>
+      <div><label>Vicino alla lezione = ultime (ore)</label><input id="nhours" type="number" min="1" value="${s.nearHours || 4}" ${ro ? 'disabled' : ''}></div>
       <div><label>Giorni di calendario</label><input id="days" type="number" value="${s.daysAhead}" ${ro ? 'disabled' : ''}></div>
     </div>
     <label><input type="checkbox" id="prio" ${s.priorityNotifications ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Notifiche prioritarie (Time Sensitive)</label>
@@ -355,7 +357,7 @@ async function settings() {
   drawRules();
   $('#addr') && ($('#addr').onclick = () => { rules.splice(Math.max(0, rules.length - 1), 0, { pattern: '', daysBefore: 3, hour: 5, minute: 0 }); drawRules(); });
   $('#save') && ($('#save').onclick = async () => {
-    try { await api('/settings', { method: 'PUT', body: { followServerOpenTime: $('#fs').checked, openRules: rules.filter(r => r.pattern.trim()), leadMilliseconds: +$('#lead').value, burstSeconds: +$('#burst').value, pollSeconds: +$('#poll').value, daysAhead: +$('#days').value, priorityNotifications: $('#prio').checked } }); msg($('#m'), 'Impostazioni salvate.', true); } catch (e) { msg($('#m'), e.message); }
+    try { await api('/settings', { method: 'PUT', body: { followServerOpenTime: $('#fs').checked, openRules: rules.filter(r => r.pattern.trim()), leadMilliseconds: +$('#lead').value, burstSeconds: +$('#burst').value, pollSeconds: +$('#poll').value, nearPollSeconds: +$('#npoll').value, nearHours: +$('#nhours').value, daysAhead: +$('#days').value, priorityNotifications: $('#prio').checked } }); msg($('#m'), 'Impostazioni salvate.', true); } catch (e) { msg($('#m'), e.message); }
   });
   $('#tn').onclick = async () => { const r = await api('/devices/test-notification', { method: 'POST' }); $('#tnm').textContent = r.push ? `inviata a ${r.sent} dispositivi` : 'APNs non configurato'; };
 }

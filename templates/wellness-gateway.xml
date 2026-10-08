@@ -21,7 +21,11 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-07 (v0.1.14)
+  <Changes>### 2026-10-08 (v0.1.15)
+- Aggressive, account-safe watching: public schedule reads every 15 s / 3 s in the last 4 h; quick booking retries.
+- Fix: session verified before reporting a cancellation (no more hourly flapping); mywellness identity stored for the app's profile page.
+
+### 2026-10-07 (v0.1.14)
 - Fix: classes with a per-rule maximum (e.g. Reformer 3) are a separate quota and no longer count in the profile limit (5).
 
 ### 2026-10-04 (v0.1.13)

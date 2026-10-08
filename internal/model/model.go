@@ -27,28 +27,29 @@ type Device struct {
 
 // Profile è un account Technogym mywellness gestito dal gateway.
 type Profile struct {
-	ID             string     `json:"id"`
-	Label          string     `json:"label"`
-	Username       string     `json:"username"`
-	PasswordEnc    string     `json:"-"`
-	Token          string     `json:"-"`
-	MWUserID       string     `json:"-"`
-	DisplayName    string     `json:"displayName"`
-	FirstName      string     `json:"firstName,omitempty"`
-	LastName       string     `json:"lastName,omitempty"`
-	NickName       string     `json:"nickName,omitempty"`
-	Email          string     `json:"email,omitempty"`
-	PictureURL     string     `json:"pictureUrl,omitempty"`
-	ThumbURL       string     `json:"thumbUrl,omitempty"`
-	FacilityURL    string     `json:"facilityUrl"`
-	FacilityID     string     `json:"facilityId"`
-	FacilityName   string     `json:"facilityName"`
-	MaxBookings    int        `json:"maxBookings"`
-	UserID         string     `json:"userId,omitempty"` // utente del gateway a cui appartiene (la "sua" persona)
-	OwnerUserIDs   []string   `json:"ownerUserIds"`     // vuoto = visibile a tutti (famiglia)
-	LastLoginAt    *time.Time `json:"lastLoginAt,omitempty"`
-	LastLoginErr   string     `json:"lastLoginError,omitempty"`
-	ActiveBookings int        `json:"activeBookings"`
+	ID             string         `json:"id"`
+	Label          string         `json:"label"`
+	Username       string         `json:"username"`
+	PasswordEnc    string         `json:"-"`
+	Token          string         `json:"-"`
+	MWUserID       string         `json:"-"`
+	DisplayName    string         `json:"displayName"`
+	FirstName      string         `json:"firstName,omitempty"`
+	LastName       string         `json:"lastName,omitempty"`
+	NickName       string         `json:"nickName,omitempty"`
+	Email          string         `json:"email,omitempty"`
+	PictureURL     string         `json:"pictureUrl,omitempty"`
+	ThumbURL       string         `json:"thumbUrl,omitempty"`
+	Identity       map[string]any `json:"identity,omitempty"` // tutto il userContext mywellness (senza token/password)
+	FacilityURL    string         `json:"facilityUrl"`
+	FacilityID     string         `json:"facilityId"`
+	FacilityName   string         `json:"facilityName"`
+	MaxBookings    int            `json:"maxBookings"`
+	UserID         string         `json:"userId,omitempty"` // utente del gateway a cui appartiene (la "sua" persona)
+	OwnerUserIDs   []string       `json:"ownerUserIds"`     // vuoto = visibile a tutti (famiglia)
+	LastLoginAt    *time.Time     `json:"lastLoginAt,omitempty"`
+	LastLoginErr   string         `json:"lastLoginError,omitempty"`
+	ActiveBookings int            `json:"activeBookings"`
 }
 
 // OpenRule: le lezioni il cui nome contiene Pattern aprono DaysBefore giorni prima alle Hour:Minute.
@@ -68,7 +69,9 @@ type Settings struct {
 	OpenRules             []OpenRule `json:"openRules"`
 	LeadMilliseconds      int        `json:"leadMilliseconds"`
 	BurstSeconds          int        `json:"burstSeconds"`
-	PollSeconds           int        `json:"pollSeconds"`
+	PollSeconds           int        `json:"pollSeconds"`     // osservazione: lettura pubblica ogni N s (default 15)
+	NearPollSeconds       int        `json:"nearPollSeconds"` // osservazione nelle ultime NearHours ore: ogni N s (default 3)
+	NearHours             int        `json:"nearHours"`       // finestra "vicina" alla lezione (default 4)
 	DaysAhead             int        `json:"daysAhead"`
 	PriorityNotifications bool       `json:"priorityNotifications"`
 }
@@ -80,7 +83,9 @@ func DefaultSettings() Settings {
 		OpenRules:             []OpenRule{{ID: "default", Pattern: "*", DaysBefore: 7, Hour: 5, Minute: 0}},
 		LeadMilliseconds:      300,
 		BurstSeconds:          120,
-		PollSeconds:           60,
+		PollSeconds:           15,
+		NearPollSeconds:       3,
+		NearHours:             4,
 		DaysAhead:             14,
 		PriorityNotifications: true,
 	}

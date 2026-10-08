@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.15 (2026-10-08)
+- **Watching ("Osservazione") is now aggressive and account-safe**: free places are read from the **public** schedule (no token, one request per club and day shared by every profile and class) every `pollSeconds` (default **15 s**, minimum 5) and every `nearPollSeconds` (default **3 s**, minimum 2) in the last `nearHours` hours (default 4). An authenticated read every 60 s still updates participation and waiting-list position. A place is taken when `availablePlaces > 0`, `numberOfParticipants < maxParticipants` or the user's `bookingUserStatus` is `CanBook`; the booking is retried up to 3 times 0.7 s apart. Existing settings at the old default (60 s) are migrated to 15 s. Background: on 8 October a Reformer place freed, mywellness notified the waiting list, and the 30 s polling lost the race.
+- **Fix (false cancellations)**: when a schedule read would turn a booked class into "cancelled", the session is verified first (`GetLoginStatus`) and re-read after a new login if the token had expired. This stops the hourly "disdetta rilevata"/"già prenotata" flapping.
+- **Profile identity**: the whole mywellness `userContext` (minus tokens/passwords) is stored at login and returned as `identity` in `GET /profiles`, for the profile page of the iOS app.
+- Watching network errors are logged (at most every 10 minutes per class); `waitingListCounter` shown in the class status.
+
 ## v0.1.14 (2026-10-07)
 - **Fix (limits)**: classes covered by a rule with its own `maxBookings` (e.g. Reformer 3) now have a **separate quota**: they are no longer counted in the profile-wide limit (default 5) and are checked only against their own rule. Before, a profile with 5 active bookings including Reformer classes could not book anything else, and vice versa; this blocked the Reformer booking of 5 October at the Wellness Town club. `activeBookings` in `GET /profiles` now excludes classes with their own quota; `limits` keeps the per-rule counters.
 

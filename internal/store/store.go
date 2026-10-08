@@ -62,9 +62,18 @@ func Open(dir string) (*Store, error) {
 	if changed {
 		_ = s.flush()
 	}
-	// migrazione v0.1.11: ritmo "umano" (il vecchio default era 20 s)
-	if s.state.Settings.PollSeconds < 30 {
-		s.state.Settings.PollSeconds = 60
+	// migrazione v0.1.15: l'osservazione legge il calendario PUBBLICO (senza token), quindi può essere
+	// più frequente senza esporre l'account: 60 s (vecchio default) → 15 s, e 3 s nelle ultime 4 ore.
+	if s.state.Settings.PollSeconds == 60 || s.state.Settings.PollSeconds < 5 {
+		s.state.Settings.PollSeconds = 15
+		_ = s.flush()
+	}
+	if s.state.Settings.NearPollSeconds <= 0 {
+		s.state.Settings.NearPollSeconds = 3
+		_ = s.flush()
+	}
+	if s.state.Settings.NearHours <= 0 {
+		s.state.Settings.NearHours = 4
 		_ = s.flush()
 	}
 	return s, nil

@@ -29,6 +29,9 @@ type Engine struct {
 	dayCache  map[string]calendar  // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
 	sessOK    map[string]time.Time // per profilo: ultima verifica positiva della sessione (GetLoginStatus)
 	nextPoll  map[string]time.Time
+	probes    map[string]calendar  // per struttura|giorno: ultima lettura PUBBLICA (senza token) dell'osservazione
+	lastAuth  map[string]time.Time // per item: ultima lettura autenticata durante l'osservazione
+	lastWarn  map[string]time.Time // per item: ultimo avviso di rete nel registro
 	lastFull  time.Time
 	wake      chan struct{}
 	NextWake  time.Time
@@ -42,7 +45,7 @@ type calendar struct {
 
 // New crea il motore.
 func New(st *store.Store, push *apns.Client) *Engine {
-	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
+	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, probes: map[string]calendar{}, lastAuth: map[string]time.Time{}, lastWarn: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
 }
 
 // Kick sveglia il loop (dopo modifiche da API).
@@ -195,16 +198,19 @@ func (e *Engine) RuleCount(profileID string, r model.OpenRule) int {
 	return len(seen)
 }
 
-// pollInterval: ritmo "umano" (default 60 s) che si intensifica a 30 s nelle 4 ore prima della lezione,
-// con una variazione casuale del ±15% per non avere un battito regolare.
+// pollInterval: l'osservazione legge il calendario pubblico (senza token) ogni PollSeconds (default 15 s)
+// e ogni NearPollSeconds (default 3 s) nelle ultime NearHours ore, con una variazione casuale del ±15%.
 func pollInterval(it model.Item, s model.Settings) time.Duration {
-	base := time.Duration(max(15, s.PollSeconds)) * time.Second
-	d := base
-	if time.Until(it.Start) < 4*time.Hour {
-		d = max(15*time.Second, base/2)
+	base := time.Duration(max(5, s.PollSeconds)) * time.Second
+	nearHours := s.NearHours
+	if nearHours <= 0 {
+		nearHours = 4
 	}
-	jitter := time.Duration((rand.Float64()*0.30 - 0.15) * float64(d))
-	return d + jitter
+	if time.Until(it.Start) < time.Duration(nearHours)*time.Hour {
+		base = time.Duration(max(2, s.NearPollSeconds)) * time.Second
+	}
+	j := 0.85 + rand.Float64()*0.30
+	return time.Duration(float64(base) * j)
 }
 
 func (e *Engine) setItem(id string, fn func(*model.Item)) {
@@ -281,6 +287,9 @@ func (e *Engine) Session(ctx context.Context, profileID string, force bool) (*my
 				st.Profiles[i].DisplayName = res.DisplayName
 				st.Profiles[i].FirstName, st.Profiles[i].LastName, st.Profiles[i].NickName = res.FirstName, res.LastName, res.NickName
 				st.Profiles[i].Email, st.Profiles[i].PictureURL, st.Profiles[i].ThumbURL = res.Email, res.PictureURL, res.ThumbURL
+				if len(res.Identity) > 0 {
+					st.Profiles[i].Identity = res.Identity
+				}
 				st.Profiles[i].LastLoginAt = &now
 				st.Profiles[i].LastLoginErr = ""
 			}
@@ -355,6 +364,24 @@ func (e *Engine) Calendar(ctx context.Context, profileID string, force bool) ([]
 	if err != nil {
 		return nil, err
 	}
+	// Se la risposta farebbe risultare disdetta una lezione prenotata, prima verifica DAVVERO la sessione:
+	// un token scaduto fa rispondere mywellness come anonimo (isParticipant=false ovunque) e senza questo
+	// controllo la prenotazione risulterebbe "disdetta" e poi di nuovo "prenotata" a ogni ora.
+	if e.wouldCancel(profileID, events) {
+		ok, lerr := e.MW.LoginStatus(ctx, sess)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if !ok {
+			e.logf("info", profileID, "risposta anonima da mywellness (token scaduto): nuovo login e rilettura")
+			if sess, err = e.Session(ctx, profileID, true); err != nil {
+				return nil, err
+			}
+			if events, err = e.MW.Search(ctx, p.FacilityID, from, to, sess); err != nil {
+				return nil, err
+			}
+		}
+	}
 	sort.Slice(events, func(i, j int) bool { return events[i].Start().Before(events[j].Start()) })
 	e.mu.Lock()
 	e.calendars[profileID] = calendar{events: events, at: time.Now()}
@@ -362,6 +389,28 @@ func (e *Engine) Calendar(ctx context.Context, profileID string, force bool) ([]
 	e.syncItems(profileID, events)
 	e.attachRecurring(profileID, events)
 	return events, nil
+}
+
+// wouldCancel: tra gli eventi letti c'è una lezione futura che il gateway ha come prenotata ma che
+// risulta senza partecipazione (candidata a "disdetta rilevata").
+func (e *Engine) wouldCancel(profileID string, events []mywellness.ClassEvent) bool {
+	byKey := map[string]mywellness.ClassEvent{}
+	for _, ev := range events {
+		byKey[ev.Key()] = ev
+	}
+	now := time.Now()
+	found := false
+	e.Store.Read(func(st *model.State) {
+		for _, it := range st.Items {
+			if it.ProfileID != profileID || it.State != model.StateBooked || !it.Start.After(now) {
+				continue
+			}
+			if ev, ok := byKey[it.ClassID+"|"+itoa(it.PartitionDate)]; ok && !ev.IsParticipant {
+				found = true
+			}
+		}
+	})
+	return found
 }
 
 // RefreshAll aggiorna il calendario di ogni profilo.
@@ -784,6 +833,7 @@ func (e *Engine) markBooked(it model.Item, note string) {
 	now := time.Now()
 	e.setItem(it.ID, func(x *model.Item) { x.State = model.StateBooked; x.LastMessage = note; x.BookedAt = &now })
 	delete(e.nextPoll, it.ID)
+	delete(e.lastAuth, it.ID)
 	e.mu.Lock()
 	delete(e.calendars, it.ProfileID)
 	e.mu.Unlock()
@@ -792,7 +842,10 @@ func (e *Engine) markBooked(it model.Item, note string) {
 	e.notify(it.ProfileID, "Prenotata ✅ · "+p.Label, fmt.Sprintf("%s · %s", it.Name, fmtTime(it.Start)), true)
 }
 
-// watch controlla i posti liberi di un item e prenota al volo.
+// watch (osservazione) controlla i posti liberi di un item e prenota al volo.
+// La lettura dei posti è PUBBLICA (senza token, condivisa tra tutti i profili e le lezioni dello stesso
+// giorno) e quindi può essere frequente senza esporre l'account; ogni 60 s si fa anche una lettura
+// autenticata per aggiornare partecipazione, lista d'attesa e stato "CanBook" dell'utente.
 func (e *Engine) watch(ctx context.Context, id string) {
 	it, ok := e.item(id)
 	if !ok {
@@ -800,40 +853,117 @@ func (e *Engine) watch(ctx context.Context, id string) {
 	}
 	now := time.Now()
 	e.setItem(id, func(x *model.Item) { x.LastCheck = &now })
-	events, err := e.dayEvents(ctx, it.ProfileID, it.Start)
-	if err != nil {
-		e.setItem(id, func(x *model.Item) { x.LastMessage = "Rete: " + err.Error() })
+	p, found := e.profile(it.ProfileID)
+	if !found {
 		return
 	}
-	for _, ev := range events {
-		if ev.ID != it.ClassID || ev.PartitionDate != it.PartitionDate {
-			continue
+	var ev *mywellness.ClassEvent
+	authenticated := false
+	if la := e.lastAuth[id]; time.Since(la) >= 60*time.Second {
+		if events, err := e.dayEvents(ctx, it.ProfileID, it.Start); err == nil {
+			e.lastAuth[id] = time.Now()
+			authenticated = true
+			ev = findEvent(events, it)
+		} else {
+			e.netWarn(it, err)
 		}
-		ap, mp := ev.AvailablePlaces, ev.MaxParticipants
-		e.setItem(id, func(x *model.Item) { x.Available, x.MaxPlaces = &ap, &mp })
-		if ev.IsParticipant {
-			e.markBooked(it, "Posto confermato dal calendario")
+	}
+	if ev == nil {
+		events, err := e.probe(ctx, p.FacilityID, it.Start)
+		if err != nil {
+			e.setItem(id, func(x *model.Item) { x.LastMessage = "Rete: " + err.Error() })
+			e.netWarn(it, err)
 			return
 		}
-		if ev.AvailablePlaces > 0 {
-			e.logf("success", it.ProfileID, "🔔 posto libero per %s %s: prenoto subito", it.Name, fmtTime(it.Start))
+		ev = findEvent(events, it)
+	}
+	if ev == nil {
+		e.setItem(id, func(x *model.Item) { x.LastMessage = "Lezione non più in calendario" })
+		return
+	}
+	ap, mp := ev.AvailablePlaces, ev.MaxParticipants
+	e.setItem(id, func(x *model.Item) { x.Available, x.MaxPlaces = &ap, &mp })
+	if authenticated && ev.IsParticipant {
+		e.markBooked(it, "Posto confermato dal calendario")
+		return
+	}
+	if ev.HasPlace() {
+		e.logf("success", it.ProfileID, "🔔 posto libero per %s %s (%d/%d): prenoto subito", it.Name, fmtTime(it.Start), ev.NumberOfParticipants, ev.MaxParticipants)
+		// fino a 3 tentativi ravvicinati: il posto può sparire tra una lettura e la prenotazione
+		for i := 0; i < 3; i++ {
 			e.attempt(ctx, id, "posto liberato")
-			if cur, ok := e.item(id); ok && cur.State != model.StateBooked {
-				e.nextPoll[id] = time.Now().Add(3 * time.Second)
+			cur, ok := e.item(id)
+			if !ok || cur.State == model.StateBooked || cur.State == model.StateFailed {
+				break
 			}
-			return
-		}
-		msg := fmt.Sprintf("Piena (%d/%d)", ev.NumberOfParticipants, ev.MaxParticipants)
-		if ev.IsInWaitingList {
-			msg += " · in lista d'attesa"
-			if ev.WaitingListPosition > 0 {
-				msg += fmt.Sprintf(" (posizione %d)", ev.WaitingListPosition)
+			if i < 2 {
+				time.Sleep(700 * time.Millisecond)
 			}
 		}
-		e.setItem(id, func(x *model.Item) { x.LastMessage = msg })
+		if cur, ok := e.item(id); ok && cur.State != model.StateBooked {
+			e.nextPoll[id] = time.Now().Add(2 * time.Second)
+			e.lastAuth[id] = time.Time{} // alla prossima lettura verifica subito se la prenotazione è passata
+		}
 		return
 	}
-	e.setItem(id, func(x *model.Item) { x.LastMessage = "Lezione non più in calendario" })
+	msg := fmt.Sprintf("Piena (%d/%d)", ev.NumberOfParticipants, ev.MaxParticipants)
+	if ev.WaitingListCounter > 0 {
+		msg += fmt.Sprintf(" · %d in lista d'attesa", ev.WaitingListCounter)
+	}
+	if authenticated && ev.IsInWaitingList {
+		msg += " · tu in lista"
+		if ev.WaitingListPosition > 0 {
+			msg += fmt.Sprintf(" (posizione %d)", ev.WaitingListPosition)
+		}
+	} else if it.State == model.StateWaitingList {
+		msg += " · tu in lista"
+	}
+	e.setItem(id, func(x *model.Item) { x.LastMessage = msg })
+}
+
+func findEvent(events []mywellness.ClassEvent, it model.Item) *mywellness.ClassEvent {
+	for i := range events {
+		if events[i].ID == it.ClassID && events[i].PartitionDate == it.PartitionDate {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
+// netWarn scrive nel registro un errore di rete dell'osservazione al più ogni 10 minuti per lezione.
+func (e *Engine) netWarn(it model.Item, err error) {
+	if time.Since(e.lastWarn[it.ID]) < 10*time.Minute {
+		return
+	}
+	e.lastWarn[it.ID] = time.Now()
+	e.logf("warn", it.ProfileID, "%s %s: osservazione, errore di rete (%v)", it.Name, fmtTime(it.Start), err)
+}
+
+// probe legge il calendario PUBBLICO di un giorno (senza token), riusando per 2 s la lettura tra tutti i
+// profili e le lezioni dello stesso giorno della stessa struttura.
+func (e *Engine) probe(ctx context.Context, facilityID string, day time.Time) ([]mywellness.ClassEvent, error) {
+	key := facilityID + "|" + day.In(mywellness.Rome).Format("2006-01-02")
+	e.mu.Lock()
+	c, ok := e.probes[key]
+	e.mu.Unlock()
+	if ok && time.Since(c.at) < 2*time.Second {
+		return c.events, nil
+	}
+	events, err := e.MW.Search(ctx, facilityID, day, day, nil)
+	if err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	e.probes[key] = calendar{events: events, at: time.Now()}
+	if len(e.probes) > 200 {
+		for k, v := range e.probes {
+			if time.Since(v.at) > time.Minute {
+				delete(e.probes, k)
+			}
+		}
+	}
+	e.mu.Unlock()
+	return events, nil
 }
 
 // dayEvents legge il calendario di un giorno per un profilo, riusando per 10 s la lettura
@@ -961,8 +1091,17 @@ func Visible(p model.Profile, userID string, isAdmin bool) bool {
 
 // Normalize ripulisce le impostazioni ricevute dall'API.
 func Normalize(s *model.Settings) {
-	if s.PollSeconds < 15 {
-		s.PollSeconds = 15
+	if s.PollSeconds < 5 {
+		s.PollSeconds = 5
+	}
+	if s.NearPollSeconds <= 0 {
+		s.NearPollSeconds = 3
+	}
+	if s.NearPollSeconds < 2 {
+		s.NearPollSeconds = 2
+	}
+	if s.NearHours <= 0 {
+		s.NearHours = 4
 	}
 	if s.BurstSeconds < 10 {
 		s.BurstSeconds = 10
