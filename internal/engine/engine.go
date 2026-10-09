@@ -619,31 +619,85 @@ func (e *Engine) AddItem(ctx context.Context, profileID, classID string, partiti
 }
 
 // RemoveItem elimina un item; con rule=true toglie anche la ricorrenza dalle occorrenze non concluse.
-func (e *Engine) RemoveItem(id string, rule bool) {
-	_ = e.Store.Update(func(st *model.State) error {
-		var key string
+// RemoveResult riassume cosa ha fatto RemoveItem.
+type RemoveResult struct {
+	Removed         int      `json:"removed"`
+	Unbooked        []string `json:"unbooked"`
+	LeftWaitingList []string `json:"leftWaitingList"`
+	Errors          []string `json:"errors"`
+}
+
+// RemoveItem toglie una lezione seguita (e, con rule, tutta la ricorrenza) e la DISDICE anche su mywellness:
+// se è prenotata fa Unbook, se è in lista d'attesa esce dalla lista. Se la disdetta non riesce (es. troppo
+// tardi per disdire) la lezione resta nell'elenco e l'errore viene riportato.
+func (e *Engine) RemoveItem(ctx context.Context, id string, rule bool, by string) RemoveResult {
+	var res RemoveResult
+	var targets []model.Item
+	var key string
+	e.Store.Read(func(st *model.State) {
 		for _, it := range st.Items {
 			if it.ID == id {
 				key = it.ProfileID + "|" + it.RuleKey(mywellness.Rome)
 			}
 		}
+		for _, it := range st.Items {
+			if it.ID == id || (rule && key != "" && it.ProfileID+"|"+it.RuleKey(mywellness.Rome) == key && !it.State.Terminal()) {
+				targets = append(targets, it)
+			}
+		}
+	})
+	if res.Unbooked == nil {
+		res.Unbooked, res.LeftWaitingList, res.Errors = []string{}, []string{}, []string{}
+	}
+	keep := map[string]bool{} // lezioni da NON rimuovere perché la disdetta su mywellness è fallita
+	now := time.Now()
+	for _, it := range targets {
+		label := it.Name + " " + fmtTime(it.Start)
+		switch {
+		case it.State == model.StateBooked && it.Start.After(now):
+			if err := e.Unbook(ctx, it.ProfileID, it.ClassID, it.PartitionDate, by); err != nil {
+				keep[it.ID] = true
+				res.Errors = append(res.Errors, label+": disdetta non riuscita ("+err.Error()+")")
+			} else {
+				res.Unbooked = append(res.Unbooked, label)
+			}
+		case it.State == model.StateWaitingList && it.Start.After(now):
+			if err := e.LeaveWaitingList(ctx, it.ProfileID, it.ClassID, it.PartitionDate, by); err != nil {
+				keep[it.ID] = true
+				res.Errors = append(res.Errors, label+": uscita dalla lista d'attesa non riuscita ("+err.Error()+")")
+			} else {
+				res.LeftWaitingList = append(res.LeftWaitingList, label)
+			}
+		}
+	}
+	_ = e.Store.Update(func(st *model.State) error {
 		kept := st.Items[:0]
 		for _, it := range st.Items {
-			if it.ID == id {
+			if it.ID == id && !keep[it.ID] {
+				res.Removed++
 				continue
 			}
 			if rule && key != "" && it.ProfileID+"|"+it.RuleKey(mywellness.Rome) == key {
-				if !it.State.Terminal() {
+				if !it.State.Terminal() && !keep[it.ID] {
+					res.Removed++
 					continue
 				}
-				it.Recurring = false
+				it.Recurring = false // la ricorrenza si ferma anche se qualche lezione resta (disdetta fallita)
 			}
 			kept = append(kept, it)
 		}
 		st.Items = kept
 		return nil
 	})
-	delete(e.nextPoll, id)
+	for _, it := range targets {
+		delete(e.nextPoll, it.ID)
+		delete(e.lastAuth, it.ID)
+	}
+	if rule {
+		e.logf("info", "", "ricorrenza fermata da %s (%d lezioni rimosse)", by, res.Removed)
+	}
+	e.Kick()
+	return res
 }
 
 // Retry riporta un item fallito in attesa.

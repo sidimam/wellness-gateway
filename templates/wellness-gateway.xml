@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-08 (v0.1.17)
+  <Changes>### 2026-10-09 (v0.1.18)
+- Removing a tracked class (or recurrence) also cancels it on mywellness (unbook / leave waiting list), with outcome report.
+
+### 2026-10-08 (v0.1.17)
 - Per-user scheduler settings (rules, lead, watching cadence…); the admin's settings become the defaults.
 
 ### 2026-10-08 (v0.1.16)

@@ -10,6 +10,7 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 - `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
 
 ## Profiles
+- `DELETE /items/{id}` (`?rule=1` for the recurrence) → removes the tracked class **and cancels it on mywellness** (unbook if booked, leave the waiting list if waiting); returns `{ok, removed, unbooked[], leftWaitingList[], errors[]}`. Classes whose cancellation fails are kept.
 - `GET /settings` → the caller's effective settings plus `custom` (true when the user has personal settings); `?scope=default` (admin) → the defaults. `PUT /settings` saves the caller's personal settings (`?scope=default`, admin: the defaults). `DELETE /settings` removes the personal settings (back to defaults).
 - `POST /profiles` with `{facilityUrl, maxBookings, copyFromProfileId}` → adds another club for the mywellness account of profile `copyFromProfileId` (credentials, owner and visibility copied; label defaults to "<label> · <club>").
 - `GET /profiles` → visible profiles (`id, label, username, displayName, firstName, lastName, nickName, email, pictureUrl, thumbUrl, identity, facilityUrl, facilityId, facilityName, maxBookings, ownerUserIds, lastLoginAt, lastLoginError, activeBookings, limits`); `identity` is the mywellness `userContext` object as returned at login (tokens and passwords removed)

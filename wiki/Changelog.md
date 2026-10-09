@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.18 (2026-10-09)
+- **Removing a tracked class now cancels it on mywellness too**: `DELETE /items/{id}` unbooks a booked class and leaves the waiting list for a waiting-list class before removing it; with `?rule=1` the whole recurrence is stopped and every future booked/waiting class of the series is cancelled. The response reports `removed`, `unbooked`, `leftWaitingList` and `errors`; a class whose cancellation fails (e.g. past the cancellation deadline) stays in the list with the error. Web UI and iOS app (build 18) confirm before removing and show the outcome. Before, "Rimuovi" only dropped the gateway entry and the booking stayed on Technogym.
+
 ## v0.1.17 (2026-10-08)
 - **Per-user scheduler settings**: every gateway user, administrator or not, has their own settings (opening rules with per-rule quota, lead, burst, watching cadence, days ahead, priority notifications). They apply to the classes of that user's profiles. The administrator's old global settings become the **defaults** for users who have not customised anything. `GET/PUT /settings` now read/write the caller's own settings (`custom` tells whether they differ from the defaults), `DELETE /settings` goes back to the defaults, `?scope=default` (admin) edits the defaults. Web UI: Impostazioni editable by everyone, with a scope selector for the administrator; iOS: Scheduler e osservazione editable by everyone, with "Torna alle predefinite".
 

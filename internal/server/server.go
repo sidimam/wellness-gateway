@@ -873,7 +873,7 @@ func (s *Server) leaveWaitingList(w http.ResponseWriter, r *http.Request, p prin
 		return
 	}
 	if in.RemoveItem {
-		s.Engine.RemoveItem(id+"|"+in.ClassID+"|"+strconv.Itoa(in.PartitionDate), false)
+		s.Engine.RemoveItem(r.Context(), id+"|"+in.ClassID+"|"+strconv.Itoa(in.PartitionDate), false, p.user.Username)
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
@@ -943,8 +943,12 @@ func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request, p principal)
 		writeErr(w, 404, "lezione non trovata")
 		return
 	}
-	s.Engine.RemoveItem(id, r.URL.Query().Get("rule") == "1")
-	writeJSON(w, 200, map[string]bool{"ok": true})
+	// Rimuovere = anche disdire su mywellness (prenotazione o lista d'attesa); con ?rule=1 tutta la ricorrenza.
+	res := s.Engine.RemoveItem(r.Context(), id, r.URL.Query().Get("rule") == "1", p.user.Username)
+	writeJSON(w, 200, struct {
+		OK bool `json:"ok"`
+		engine.RemoveResult
+	}{OK: len(res.Errors) == 0, RemoveResult: res})
 }
 
 func (s *Server) retryItem(w http.ResponseWriter, r *http.Request, p principal) {
