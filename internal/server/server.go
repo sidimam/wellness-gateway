@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -501,11 +502,117 @@ type limitInfo struct {
 
 type profileOut struct {
 	model.Profile
-	Limits []limitInfo `json:"limits"`
+	Limits []limitInfo   `json:"limits"`
+	Card   *identityCard `json:"card,omitempty"` // dati mywellness normalizzati e ordinati per la scheda profilo
+}
+
+// identityCard: i dati del userContext mywellness in forma normalizzata (i client li formattano nella loro lingua).
+type identityCard struct {
+	FullName          string            `json:"fullName"`
+	NickName          string            `json:"nickName,omitempty"`
+	Email             string            `json:"email,omitempty"`
+	Gender            string            `json:"gender,omitempty"`            // "M" / "F" / altro
+	BirthDate         string            `json:"birthDate,omitempty"`         // YYYY-MM-DD
+	Culture           string            `json:"culture,omitempty"`           // es. it-IT
+	MeasurementSystem string            `json:"measurementSystem,omitempty"` // Metric / Imperial
+	MemberSince       string            `json:"memberSince,omitempty"`       // RFC 3339
+	TimeZoneWindowsID string            `json:"timeZoneWindowsId,omitempty"`
+	UserID            string            `json:"userId,omitempty"`
+	Extra             map[string]string `json:"extra,omitempty"` // altri campi non riconosciuti (tecnici)
+}
+
+func identityString(id map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := id[k]; ok && v != nil {
+			switch t := v.(type) {
+			case string:
+				if strings.TrimSpace(t) != "" {
+					return strings.TrimSpace(t)
+				}
+			case float64:
+				return strconv.FormatInt(int64(t), 10)
+			case bool:
+				return strconv.FormatBool(t)
+			}
+		}
+	}
+	return ""
+}
+
+// buildCard normalizza il userContext mywellness: date in ISO, nome completo, campi tecnici in Extra.
+func buildCard(pr model.Profile) *identityCard {
+	id := pr.Identity
+	if len(id) == 0 {
+		return nil
+	}
+	c := &identityCard{Extra: map[string]string{}}
+	first, last := identityString(id, "firstName"), identityString(id, "lastName")
+	c.FullName = strings.TrimSpace(first + " " + last)
+	if c.FullName == "" {
+		c.FullName = pr.DisplayName
+	}
+	c.NickName = identityString(id, "nickName")
+	c.Email = identityString(id, "email")
+	if c.Email == "" {
+		c.Email = identityString(id, "accountUsername")
+	}
+	c.Gender = identityString(id, "gender")
+	if b := identityString(id, "birthDate", "dateOfBirth"); b != "" {
+		if len(b) == 8 && !strings.Contains(b, "-") { // 19780319
+			c.BirthDate = b[:4] + "-" + b[4:6] + "-" + b[6:8]
+		} else if len(b) >= 10 {
+			c.BirthDate = b[:10]
+		}
+	}
+	c.Culture = identityString(id, "defaultCulture", "culture")
+	if c.Culture == "" {
+		if ci, ok := id["userCultureInfo"].(map[string]any); ok {
+			c.Culture = identityString(ci, "name", "culture", "code")
+		} else {
+			c.Culture = identityString(id, "userCultureInfo")
+		}
+	}
+	c.MeasurementSystem = identityString(id, "measurementSystem", "unitOfMeasure")
+	if m := identityString(id, "createdOn", "memberSince"); m != "" {
+		if t, err := time.Parse(time.RFC3339Nano, m); err == nil {
+			c.MemberSince = t.Format(time.RFC3339)
+		} else if t, err := time.Parse("2006-01-02T15:04:05", m); err == nil {
+			c.MemberSince = t.Format(time.RFC3339)
+		} else {
+			c.MemberSince = m
+		}
+	}
+	c.TimeZoneWindowsID = identityString(id, "timeZoneWindowsId", "timeZone")
+	c.UserID = identityString(id, "id")
+	known := map[string]bool{"firstName": true, "lastName": true, "nickName": true, "email": true, "accountUsername": true, "gender": true,
+		"birthDate": true, "dateOfBirth": true, "displayBirthDate": true, "defaultCulture": true, "culture": true, "userCultureInfo": true,
+		"measurementSystem": true, "unitOfMeasure": true, "createdOn": true, "memberSince": true, "timeZoneWindowsId": true, "timeZone": true,
+		"id": true, "pictureUrl": true, "thumbPictureUrl": true, "credentialId": true, "canBeMultipleUser": true}
+	for k, v := range id {
+		if known[k] || v == nil {
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			if strings.TrimSpace(t) != "" {
+				c.Extra[k] = t
+			}
+		case float64, bool:
+			c.Extra[k] = fmt.Sprint(t)
+		default:
+			if b, err := json.Marshal(t); err == nil && string(b) != "{}" && string(b) != "[]" && string(b) != "null" {
+				c.Extra[k] = string(b)
+			}
+		}
+	}
+	if len(c.Extra) == 0 {
+		c.Extra = nil
+	}
+	return c
 }
 
 func (s *Server) profileOut(pr model.Profile, settings model.Settings) profileOut {
-	o := profileOut{Profile: pr, Limits: []limitInfo{}}
+	o := profileOut{Profile: pr, Limits: []limitInfo{}, Card: buildCard(pr)}
 	for _, r := range settings.OpenRules {
 		pat := strings.TrimSpace(r.Pattern)
 		if r.MaxBookings > 0 && pat != "" && pat != "*" {

@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-09 (v0.1.18)
+  <Changes>### 2026-10-10 (v0.1.19)
+- Readable mywellness profile card (normalized identity) in the API and in the web user dialog.
+
+### 2026-10-09 (v0.1.18)
 - Removing a tracked class (or recurrence) also cancels it on mywellness (unbook / leave waiting list), with outcome report.
 
 ### 2026-10-08 (v0.1.17)

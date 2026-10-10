@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.19 (2026-10-10)
+- **Readable profile card**: `GET /profiles` returns `card`, the mywellness identity normalized (`fullName, nickName, email, gender, birthDate YYYY-MM-DD, culture, measurementSystem, memberSince RFC 3339, timeZoneWindowsId, userId, extra`), so clients can format dates, language, units and time zone in the user's language. The web user dialog shows the card (name, nickname, email, gender, date of birth with age, language, units, member since, time zone) with the user ID and other technical fields in a collapsible "Dati tecnici"; the iOS app (build 19) shows the same layout.
+
 ## v0.1.18 (2026-10-09)
 - **Removing a tracked class now cancels it on mywellness too**: `DELETE /items/{id}` unbooks a booked class and leaves the waiting list for a waiting-list class before removing it; with `?rule=1` the whole recurrence is stopped and every future booked/waiting class of the series is cancelled. The response reports `removed`, `unbooked`, `leftWaitingList` and `errors`; a class whose cancellation fails (e.g. past the cancellation deadline) stays in the list with the error. Web UI and iOS app (build 18) confirm before removing and show the outcome. Before, "Rimuovi" only dropped the gateway entry and the booking stayed on Technogym.
 

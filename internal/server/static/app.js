@@ -214,6 +214,31 @@ async function classes() {
   autoRefresh(myView, () => load(false)); window.__refreshNow = () => stillHere(myView) && load(false);
 }
 
+/* ---------- scheda profilo mywellness (dati normalizzati dal gateway, formattati nella lingua della UI) ---------- */
+const WIN_TZ = { 'W. Europe Standard Time': 'Europe/Rome', 'Central Europe Standard Time': 'Europe/Budapest', 'Central European Standard Time': 'Europe/Warsaw', 'Romance Standard Time': 'Europe/Paris', 'GMT Standard Time': 'Europe/London', 'UTC': 'UTC', 'E. Europe Standard Time': 'Europe/Bucharest', 'GTB Standard Time': 'Europe/Athens', 'Eastern Standard Time': 'America/New_York', 'Pacific Standard Time': 'America/Los_Angeles' };
+function profileCardHTML(c) {
+  const loc = { it: 'it-IT', en: 'en-GB', es: 'es-ES', fr: 'fr-FR', de: 'de-DE' }[i18n.lang] || 'it-IT';
+  const longDate = d => { const t = new Date(d); return isNaN(t) ? d : t.toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' }); };
+  const language = code => { try { const n = new Intl.DisplayNames([loc], { type: 'language' }).of(code); return n ? n.charAt(0).toUpperCase() + n.slice(1) : code; } catch (e) { return code; } };
+  const tz = id => { const iana = WIN_TZ[id]; if (!iana) return id; try { const p = new Intl.DateTimeFormat(loc, { timeZone: iana, timeZoneName: 'long' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName'); return p ? `${p.value} (${iana})` : iana; } catch (e) { return iana; } };
+  const gender = g => g === 'M' ? i18n.t('Uomo') : g === 'F' ? i18n.t('Donna') : g;
+  const units = u => /metric/i.test(u) ? i18n.t('Metrico') : /imperial/i.test(u) ? i18n.t('Imperiale') : u;
+  const age = d => { const b = new Date(d); if (isNaN(b)) return ''; const n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a--; return ` (${a} ${i18n.t('anni')})`; };
+  const rows = [];
+  if (c.fullName) rows.push([i18n.t('Nome e cognome'), c.fullName]);
+  if (c.nickName) rows.push([i18n.t('Nickname'), c.nickName]);
+  if (c.email) rows.push([i18n.t('Email'), c.email]);
+  if (c.gender) rows.push([i18n.t('Genere'), gender(c.gender)]);
+  if (c.birthDate) rows.push([i18n.t('Data di nascita'), longDate(c.birthDate) + age(c.birthDate)]);
+  if (c.culture) rows.push([i18n.t('Lingua'), language(c.culture)]);
+  if (c.measurementSystem) rows.push([i18n.t('Unità di misura'), units(c.measurementSystem)]);
+  if (c.memberSince) rows.push([i18n.t('Iscritto dal'), longDate(c.memberSince)]);
+  if (c.timeZoneWindowsId) rows.push([i18n.t('Fuso orario'), tz(c.timeZoneWindowsId)]);
+  const extra = Object.entries(c.extra || {});
+  return `<div class="card" style="margin:8px 0 14px"><table>${rows.map(([k, v]) => `<tr><th style="width:38%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>
+    ${c.userId || extra.length ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">ⓘ ${i18n.t('Dati tecnici')}</summary><table>${c.userId ? `<tr><th style="width:38%">${i18n.t('ID utente')}</th><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(c.userId)}</td></tr>` : ''}${extra.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table></details>` : ''}</div>`;
+}
+
 /* ---------- utenti e account mywellness ---------- */
 async function profilesView() {
   const admin = me.user.isAdmin;
@@ -260,6 +285,7 @@ async function profilesView() {
         <div><label>Ruolo</label><select id="d-a" ${admin ? '' : 'disabled'}><option value="0" ${u.isAdmin ? '' : 'selected'}>Utente</option><option value="1" ${u.isAdmin ? 'selected' : ''}>Amministratore</option></select></div>
       </div>
       <h3>Account mywellness</h3>
+      ${pr && pr.card ? profileCardHTML(pr.card) : ''}
       ${pr ? `<div class="grid">
         <div><label>Email mywellness</label><input value="${esc(pr.username)}" disabled></div>
         <div><label>Nuova password mywellness (vuoto = invariata)</label><input id="d-mp" type="password" autocomplete="new-password"></div>
