@@ -9,3 +9,6 @@
   - *Limite prenotazioni raggiunto*: the profile already has N active bookings (including ones made on mywellness).
   - *Non ancora aperta*: the server refused the Book before opening; the burst keeps retrying for `burstSeconds`.
   - No push: check `APNS_*` variables and that the iOS build matches `APNS_PRODUCTION` (TestFlight = true).
+
+## Web UI behind Cloudflare
+Static assets are served with `Cache-Control: no-store` and versioned URLs (`?v=<version>`), so a new release is picked up at the first reload. If a browser still shows an old UI, hard-reload (Cmd+Shift+R).

@@ -66,11 +66,20 @@ func (p principal) seesAll() bool { return p.user.IsAdmin && !p.device.SelfOnly 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(static, "static")
-	mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServer(http.FS(sub))))
+	// Script e stili: niente cache (Cloudflare teneva app.js per 4 ore e la UI nuova girava con lo script vecchio);
+	// in più index.html li richiama con ?v=<versione>, così ogni release ha URL nuovi.
+	files := http.StripPrefix("/ui/", http.FileServer(http.FS(sub)))
+	mux.Handle("GET /ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, must-revalidate")
+		files.ServeHTTP(w, r)
+	}))
+	index, _ := fs.ReadFile(sub, "index.html")
+	index = []byte(strings.NewReplacer("/ui/app.css", "/ui/app.css?v="+Version, "/ui/i18n.js", "/ui/i18n.js?v="+Version, "/ui/app.js", "/ui/app.js?v="+Version).Replace(string(index)))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
-		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFileFS(w, r, sub, "index.html")
+		w.Header().Set("Cache-Control", "no-store, must-revalidate")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(index)
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"status": "ok", "version": Version})

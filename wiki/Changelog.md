@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.2 (2026-10-12)
+- **Fix (web UI behind Cloudflare)**: `app.js`, `i18n.js` and `app.css` are now served with `Cache-Control: no-store` and referenced with `?v=<version>` from `index.html`. Cloudflare was caching the old `app.js` for 4 hours, so after an update the page (new) ran with the old script: the new "Persone" page and the 👥 button did not work until the cache expired.
+
 ## v0.2.1 (2026-10-12)
 - Leaderboard reads use the official widget's date formats (ISO-week Monday `yyyymmdd`, month `yyyymm`) and also read the previous week/month. Note: for Wellness Town the public leaderboard API answers an empty list even when authenticated; the "Classifica Settimanale" of the mobile app comes from an endpoint not present in the web widget, still to be identified.
 
