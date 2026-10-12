@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-12 (v0.2.0)
+  <Changes>### 2026-10-12 (v0.2.1)
+- Leaderboard date formats aligned with the official widget (week Monday yyyymmdd, month yyyymm), previous period read too.
+
+### 2026-10-12 (v0.2.0)
 - People: participants of your classes, classmates and the club MOVEs leaderboard in a SQLite db (/config/people.db); Persone page in the web UI.
 
 ### 2026-10-10 (v0.1.19)

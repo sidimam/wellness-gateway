@@ -1352,23 +1352,30 @@ func (e *Engine) collectLeaderboards(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		for _, trend := range []string{"week", "month"} {
-			dates := []int{ymd(now), ymd(monday)}
-			period := monday.Format("2006-01-02")
-			if trend == "month" {
-				dates = []int{ymd(now), ymd(first)}
-				period = first.Format("2006-01")
+		// Formati del widget ufficiale: settimana = lunedì ISO come yyyymmdd, mese = yyyymm. Si leggono il
+		// periodo corrente e quello precedente (la classifica "settimanale" dell'app può riferirsi a entrambi).
+		type want struct {
+			trend  string
+			date   int
+			period string
+		}
+		lastMonday := monday.AddDate(0, 0, -7)
+		prevMonth := first.AddDate(0, -1, 0)
+		ym := func(t time.Time) int { y, m, _ := t.Date(); return y*100 + int(m) }
+		wants := []want{
+			{"week", ymd(monday), monday.Format("2006-01-02")},
+			{"week", ymd(lastMonday), lastMonday.Format("2006-01-02")},
+			{"month", ym(first), first.Format("2006-01")},
+			{"month", ym(prevMonth), prevMonth.Format("2006-01")},
+		}
+		for _, w := range wants {
+			entries, err := e.MW.Leaderboard(ctx, sess, fid, w.trend, w.date)
+			if err != nil {
+				e.logf("warn", pid, "classifica %s %s: %v", w.trend, w.period, err)
+				continue
 			}
-			for _, d := range dates {
-				entries, err := e.MW.Leaderboard(ctx, sess, fid, trend, d)
-				if err != nil {
-					e.logf("warn", pid, "classifica %s: %v", trend, err)
-					break
-				}
-				if len(entries) > 0 {
-					_ = e.People.RecordLeaderboard(ctx, fid, trend, period, entries)
-					break
-				}
+			if len(entries) > 0 {
+				_ = e.People.RecordLeaderboard(ctx, fid, w.trend, w.period, entries)
 			}
 		}
 	}

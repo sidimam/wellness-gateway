@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.1 (2026-10-12)
+- Leaderboard reads use the official widget's date formats (ISO-week Monday `yyyymmdd`, month `yyyymm`) and also read the previous week/month. Note: for Wellness Town the public leaderboard API answers an empty list even when authenticated; the "Classifica Settimanale" of the mobile app comes from an endpoint not present in the web widget, still to be identified.
+
 ## v0.2.0 (2026-10-12)
 - **People** (new, separate from the booking engine): the gateway keeps a **SQLite** database (`/config/people.db`, pure-Go driver, no cgo) with the **public** member data mywellness exposes — nickname, picture, "private profile" flag — plus attendance and the club's **MOVEs leaderboard**. A low-frequency collector reads the participants of the classes you track or booked (every 15 minutes it checks; at most one read per class every 3 hours, plus one in the 40 minutes before the start) and the weekly/monthly leaderboard hourly. Reads are authenticated but rare and do not touch the booking timing.
 - API: `GET /profiles/{id}/classes/{classId}/{date}/participants` (live read + history: seen count, classes attended, best leaderboard positions), `GET /people/members[?facility&q]`, `GET /people/members/{id}` (attendance history, leaderboard rows), `GET /people/leaderboard?facility&trend=week|month[&period]`, `GET /people/stats`. Visibility follows the caller's profiles (club).
