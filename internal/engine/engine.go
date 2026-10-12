@@ -15,14 +15,16 @@ import (
 	"github.com/sidimam/wellness-gateway/internal/apns"
 	"github.com/sidimam/wellness-gateway/internal/model"
 	"github.com/sidimam/wellness-gateway/internal/mywellness"
+	"github.com/sidimam/wellness-gateway/internal/people"
 	"github.com/sidimam/wellness-gateway/internal/store"
 )
 
 // Engine coordina profili, calendario e prenotazioni.
 type Engine struct {
-	Store *store.Store
-	MW    *mywellness.Client
-	Push  *apns.Client // può essere nil
+	Store  *store.Store
+	MW     *mywellness.Client
+	Push   *apns.Client // può essere nil
+	People *people.DB   // soci e classifiche (può essere nil)
 
 	mu        sync.Mutex
 	calendars map[string]calendar  // per profilo: calendario autenticato (daysAhead)
@@ -32,6 +34,7 @@ type Engine struct {
 	probes    map[string]calendar  // per struttura|giorno: ultima lettura PUBBLICA (senza token) dell'osservazione
 	lastAuth  map[string]time.Time // per item: ultima lettura autenticata durante l'osservazione
 	lastWarn  map[string]time.Time // per item: ultimo avviso di rete nel registro
+	peopleAt  map[string]time.Time // per lezione: ultima lettura dei partecipanti
 	lastFull  time.Time
 	wake      chan struct{}
 	NextWake  time.Time
@@ -45,7 +48,7 @@ type calendar struct {
 
 // New crea il motore.
 func New(st *store.Store, push *apns.Client) *Engine {
-	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, probes: map[string]calendar{}, lastAuth: map[string]time.Time{}, lastWarn: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
+	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, probes: map[string]calendar{}, lastAuth: map[string]time.Time{}, lastWarn: map[string]time.Time{}, peopleAt: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
 }
 
 // Kick sveglia il loop (dopo modifiche da API).
@@ -1187,5 +1190,186 @@ func Normalize(s *model.Settings) {
 	}
 	if !hasDefault {
 		s.OpenRules = append(s.OpenRules, model.OpenRule{ID: "default", Pattern: "*", DaysBefore: 7, Hour: 5})
+	}
+}
+
+// ---- soci e classifiche (raccolta a bassa frequenza, separata dal motore di prenotazione) ----
+
+// RunPeople raccoglie ogni 15 minuti i partecipanti delle lezioni seguite o prenotate (nei prossimi 7 giorni,
+// al più ogni 3 ore per lezione, più una lettura nei 40 minuti prima dell'inizio) e ogni ora la classifica
+// MOVEs del centro. Letture autenticate ma rade: non toccano i tempi della prenotazione.
+func (e *Engine) RunPeople(ctx context.Context) {
+	if e.People == nil {
+		return
+	}
+	time.Sleep(20 * time.Second) // lascia partire prima il motore
+	lastLB := time.Time{}
+	for ctx.Err() == nil {
+		e.collectParticipants(ctx)
+		if time.Since(lastLB) > time.Hour {
+			e.collectLeaderboards(ctx)
+			lastLB = time.Now()
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(15 * time.Minute):
+		}
+	}
+}
+
+func (e *Engine) collectParticipants(ctx context.Context) {
+	type target struct {
+		profileID string
+		ev        mywellness.ClassEvent
+	}
+	var targets []target
+	now := time.Now()
+	e.Store.Read(func(st *model.State) {
+		tracked := map[string]bool{}
+		for _, it := range st.Items {
+			if !it.State.Terminal() && it.Start.After(now) {
+				tracked[it.ProfileID+"|"+it.ClassID+"|"+itoa(it.PartitionDate)] = true
+			}
+		}
+		e.mu.Lock()
+		for _, p := range st.Profiles {
+			c, ok := e.calendars[p.ID]
+			if !ok {
+				continue
+			}
+			for _, ev := range c.events {
+				if ev.Start().Before(now) || ev.Start().After(now.Add(7*24*time.Hour)) {
+					continue
+				}
+				if ev.IsParticipant || ev.IsInWaitingList || tracked[p.ID+"|"+ev.Key()] {
+					targets = append(targets, target{p.ID, ev})
+				}
+			}
+		}
+		e.mu.Unlock()
+	})
+	seen := map[string]bool{}
+	for _, t := range targets {
+		if seen[t.ev.Key()] {
+			continue
+		}
+		seen[t.ev.Key()] = true
+		last := e.peopleAt[t.ev.Key()]
+		soon := time.Until(t.ev.Start()) < 40*time.Minute
+		if time.Since(last) < 3*time.Hour && !(soon && time.Since(last) > 20*time.Minute) {
+			continue
+		}
+		if _, err := e.FetchParticipants(ctx, t.profileID, t.ev.ID, t.ev.PartitionDate); err != nil {
+			e.logf("warn", t.profileID, "%s %s: lettura partecipanti fallita (%v)", t.ev.Name, fmtTime(t.ev.Start()), err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// FetchParticipants legge dal vivo gli iscritti di una lezione con la sessione del profilo e li salva nel database.
+func (e *Engine) FetchParticipants(ctx context.Context, profileID, classID string, partitionDate int) ([]mywellness.Participant, error) {
+	if e.People == nil {
+		return nil, errors.New("database soci non attivo")
+	}
+	p, ok := e.profile(profileID)
+	if !ok {
+		return nil, errors.New("profilo inesistente")
+	}
+	sess, err := e.ensureSession(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	parts, err := e.MW.Participants(ctx, sess, classID, partitionDate)
+	if errors.Is(err, mywellness.ErrUnauthorized) {
+		if sess, err = e.Session(ctx, profileID, true); err == nil {
+			parts, err = e.MW.Participants(ctx, sess, classID, partitionDate)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	meta := people.ClassMeta{ClassID: classID, PartitionDate: partitionDate, FacilityID: p.FacilityID}
+	e.mu.Lock()
+	if c, ok := e.calendars[profileID]; ok {
+		for _, ev := range c.events {
+			if ev.ID == classID && ev.PartitionDate == partitionDate {
+				meta.Name, meta.Start, meta.Room, meta.Trainer = ev.Name, ev.Start(), ev.Room, ev.AssignedTo
+				meta.MaxParticipants, meta.Waiting = ev.MaxParticipants, ev.WaitingListCounter
+			}
+		}
+	}
+	e.mu.Unlock()
+	if meta.Name == "" {
+		if it, ok := e.item(profileID + "|" + classID + "|" + itoa(partitionDate)); ok {
+			meta.Name, meta.Start, meta.Room, meta.Trainer = it.Name, it.Start, it.Room, it.Trainer
+			if it.MaxPlaces != nil {
+				meta.MaxParticipants = *it.MaxPlaces
+			}
+		}
+	}
+	if meta.Name == "" {
+		// lezione non in cache: leggila dal calendario pubblico del giorno
+		d := fmt.Sprintf("%08d", partitionDate)
+		if day, perr := time.ParseInLocation("20060102", d, mywellness.Rome); perr == nil {
+			if evs, perr := e.probe(ctx, p.FacilityID, day); perr == nil {
+				for _, ev := range evs {
+					if ev.ID == classID && ev.PartitionDate == partitionDate {
+						meta.Name, meta.Start, meta.Room, meta.Trainer = ev.Name, ev.Start(), ev.Room, ev.AssignedTo
+						meta.MaxParticipants, meta.Waiting = ev.MaxParticipants, ev.WaitingListCounter
+					}
+				}
+			}
+		}
+	}
+	if err := e.People.RecordParticipants(ctx, meta, parts); err != nil {
+		return parts, err
+	}
+	e.peopleAt[classID+"|"+itoa(partitionDate)] = time.Now()
+	return parts, nil
+}
+
+// collectLeaderboards legge la classifica MOVEs (settimana e mese) di ogni centro con la sessione di un profilo.
+// mywellness vuole la data come intero yyyymmdd: si provano oggi, il lunedì della settimana e il primo del mese.
+func (e *Engine) collectLeaderboards(ctx context.Context) {
+	byFacility := map[string]string{}
+	e.Store.Read(func(st *model.State) {
+		for _, p := range st.Profiles {
+			if _, ok := byFacility[p.FacilityID]; !ok && p.FacilityID != "" {
+				byFacility[p.FacilityID] = p.ID
+			}
+		}
+	})
+	now := time.Now().In(mywellness.Rome)
+	monday := now.AddDate(0, 0, -((int(now.Weekday()) + 6) % 7))
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, mywellness.Rome)
+	ymd := func(t time.Time) int { y, m, d := t.Date(); return y*10000 + int(m)*100 + d }
+	for fid, pid := range byFacility {
+		sess, err := e.ensureSession(ctx, pid)
+		if err != nil {
+			continue
+		}
+		for _, trend := range []string{"week", "month"} {
+			dates := []int{ymd(now), ymd(monday)}
+			period := monday.Format("2006-01-02")
+			if trend == "month" {
+				dates = []int{ymd(now), ymd(first)}
+				period = first.Format("2006-01")
+			}
+			for _, d := range dates {
+				entries, err := e.MW.Leaderboard(ctx, sess, fid, trend, d)
+				if err != nil {
+					e.logf("warn", pid, "classifica %s: %v", trend, err)
+					break
+				}
+				if len(entries) > 0 {
+					_ = e.People.RecordLeaderboard(ctx, fid, trend, period, entries)
+					break
+				}
+			}
+		}
 	}
 }

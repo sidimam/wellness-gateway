@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 (2026-10-12)
+- **People** (new, separate from the booking engine): the gateway keeps a **SQLite** database (`/config/people.db`, pure-Go driver, no cgo) with the **public** member data mywellness exposes — nickname, picture, "private profile" flag — plus attendance and the club's **MOVEs leaderboard**. A low-frequency collector reads the participants of the classes you track or booked (every 15 minutes it checks; at most one read per class every 3 hours, plus one in the 40 minutes before the start) and the weekly/monthly leaderboard hourly. Reads are authenticated but rare and do not touch the booking timing.
+- API: `GET /profiles/{id}/classes/{classId}/{date}/participants` (live read + history: seen count, classes attended, best leaderboard positions), `GET /people/members[?facility&q]`, `GET /people/members/{id}` (attendance history, leaderboard rows), `GET /people/leaderboard?facility&trend=week|month[&period]`, `GET /people/stats`. Visibility follows the caller's profiles (club).
+- Web UI: new **Persone** page (podium + leaderboard with past periods, classmates with search, member card); a 👥 button on every class in Lezioni opens the live participant list. iOS app 1.2.0 (build 20): Participants section in the class sheet, "Persone del centro" in Altro.
+- Privacy: only data the Technogym app already shows to every member; private profiles stay anonymous; no personal data of third parties beyond that is collected.
+
 ## v0.1.19 (2026-10-10)
 - **Readable profile card**: `GET /profiles` returns `card`, the mywellness identity normalized (`fullName, nickName, email, gender, birthDate YYYY-MM-DD, culture, measurementSystem, memberSince RFC 3339, timeZoneWindowsId, userId, extra`), so clients can format dates, language, units and time zone in the user's language. The web user dialog shows the card (name, nickname, email, gender, date of birth with age, language, units, member since, time zone) with the user ID and other technical fields in a collapsible "Dati tecnici"; the iOS app (build 19) shows the same layout.
 

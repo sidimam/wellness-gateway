@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,6 +28,7 @@ var (
 	coreURL = "https://core.mywellness.com"
 	calURL  = "https://calendar.mywellness.com"
 	svcURL  = "https://services.mywellness.com"
+	lbURL   = "https://leaderboards.mywellness.com"
 )
 
 // Rome è il fuso del centro.
@@ -530,4 +532,139 @@ func (c *Client) LeaveWaitingList(ctx context.Context, sess *Session, classID st
 	default:
 		return &APIError{Status: 409, Message: "uscita dalla lista d'attesa fallita: " + raw}
 	}
+}
+
+// ---- partecipanti e classifica (dati PUBBLICI dei soci: nickname, foto, profilo privato) ----
+
+// Participant è un iscritto a una lezione come lo espone GetParticipants (stessi dati dell'app ufficiale).
+type Participant struct {
+	UserID     string         `json:"userId"`
+	NickName   string         `json:"nickName"`
+	PictureURL string         `json:"pictureUrl"`
+	Private    bool           `json:"private"`
+	JoinedOn   string         `json:"joinedOn,omitempty"`
+	Station    string         `json:"station,omitempty"`
+	Equipment  string         `json:"equipment,omitempty"`
+	Extra      map[string]any `json:"extra,omitempty"` // ogni altro campo restituito (extData, ecc.)
+}
+
+// Participants legge gli iscritti di una lezione (serve la sessione: anonimo risponde 401).
+func (c *Client) Participants(ctx context.Context, sess *Session, classID string, partitionDate int) ([]Participant, error) {
+	if sess == nil || sess.Token == "" {
+		return nil, ErrUnauthorized
+	}
+	d := fmt.Sprintf("%08d", partitionDate)
+	q := url.Values{"classId": {classID}, "date": {d[:4] + "-" + d[4:6] + "-" + d[6:8]}}
+	data, resp, err := c.do(ctx, http.MethodGet, calURL, "/v2/enduser/class/GetParticipants", q, nil, sess)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{Status: resp.StatusCode, Message: "errore partecipanti"}
+	}
+	var raw []map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		var wrapped struct {
+			Data []map[string]any `json:"data"`
+		}
+		if err2 := json.Unmarshal(data, &wrapped); err2 != nil || wrapped.Data == nil {
+			if errs := errorsIn(data); len(errs) > 0 {
+				return nil, &APIError{Status: resp.StatusCode, Message: joinErrs(errs)}
+			}
+			return nil, &APIError{Status: resp.StatusCode, Message: "formato partecipanti non riconosciuto"}
+		}
+		raw = wrapped.Data
+	}
+	out := make([]Participant, 0, len(raw))
+	for _, r := range raw {
+		p := Participant{Extra: map[string]any{}}
+		if u, ok := r["user"].(map[string]any); ok {
+			p.UserID = str(u["id"])
+			p.NickName = str(u["nickName"])
+			p.PictureURL = strings.Replace(firstStr(u, "pictureHttps", "pictureUrl", "thumbPictureUrl"), "http://", "https://", 1)
+			p.Private, _ = u["hasPrivateProfile"].(bool)
+			for k, v := range u {
+				switch k {
+				case "id", "nickName", "pictureHttps", "pictureUrl", "thumbPictureUrl", "hasPrivateProfile":
+				default:
+					if v != nil {
+						p.Extra["user."+k] = v
+					}
+				}
+			}
+		}
+		p.JoinedOn = str(r["joinedOn"])
+		p.Station = str(r["station"])
+		if eq, ok := r["bookedEquipment"].(map[string]any); ok {
+			p.Equipment = strings.TrimSpace(str(eq["label"]) + " " + str(eq["serial"]))
+		}
+		for k, v := range r {
+			switch k {
+			case "user", "joinedOn", "station", "bookedEquipment":
+			default:
+				if v != nil {
+					p.Extra[k] = v
+				}
+			}
+		}
+		if len(p.Extra) == 0 {
+			p.Extra = nil
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func str(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(t)
+	}
+	return ""
+}
+
+func firstStr(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if s := str(m[k]); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// LeaderboardEntry è una riga della classifica MOVEs del centro (quella dell'app Technogym → Sfide).
+type LeaderboardEntry struct {
+	Position   int    `json:"position"`
+	NickName   string `json:"nickName"`
+	PictureURL string `json:"pictureUrl"`
+	Moves      int    `json:"moves"`
+}
+
+// Leaderboard legge la classifica MOVEs di un centro: trend "week" o "month", date = yyyymmdd (intero).
+func (c *Client) Leaderboard(ctx context.Context, sess *Session, facilityID, trend string, date int) ([]LeaderboardEntry, error) {
+	path := fmt.Sprintf("/leaderboard/%s/moves/%s/%d", facilityID, trend, date)
+	data, resp, err := c.do(ctx, http.MethodGet, lbURL, path, url.Values{"limit": {"100"}}, nil, sess)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{Status: resp.StatusCode, Message: "errore classifica: " + strings.TrimSpace(string(data))}
+	}
+	var out struct {
+		Leaderboard []LeaderboardEntry `json:"leaderboard"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, &APIError{Status: resp.StatusCode, Message: "formato classifica non riconosciuto"}
+	}
+	for i := range out.Leaderboard {
+		out.Leaderboard[i].PictureURL = strings.Replace(out.Leaderboard[i].PictureURL, "http://", "https://", 1)
+	}
+	return out.Leaderboard, nil
 }

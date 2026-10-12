@@ -123,7 +123,7 @@ function showView(v) {
   viewId++;
   if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
   nav.querySelectorAll('button[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-  ({ dashboard, classes, profiles: profilesView, settings, log }[v] || dashboard)();
+  ({ dashboard, classes, people: peopleView, profiles: profilesView, settings, log }[v] || dashboard)();
 }
 const stillHere = id => id === viewId;
 /* autorefresh: ogni 20 s e quando la scheda torna visibile */
@@ -200,7 +200,7 @@ async function classes() {
       if (d !== day) { day = d; html += `<div class="day">${d}</div><div class="grid">`; }
       const bi = c.bookingInfo || {};
       const status = c.isParticipant ? '<span class="badge booked">Prenotata</span>' : c.isInWaitingList ? '<span class="badge waitingList">In lista d\'attesa</span>' : bi.bookingAvailable === false ? '<span class="badge">Non prenotabile online</span>' : c.opensOn && new Date(c.opensOn) > new Date() ? `<span class="badge pending">Apre ${fmtD(c.opensOn)}</span>` : c.availablePlaces <= 0 ? '<span class="badge watching">Piena · lista d\'attesa</span>' : `<span class="badge booked">${c.availablePlaces} liberi su ${c.maxParticipants}</span>`;
-      const actions = c.tracked ? `<span class="badge ${esc(c.tracked.state)}">${STATE[c.tracked.state]}</span>` : `<button class="small" data-add="${c.id}|${c.partitionDate}">Prenota questa</button><button class="small" data-addr="${c.id}|${c.partitionDate}">Ogni settimana</button>`;
+      const actions = (c.tracked ? `<span class="badge ${esc(c.tracked.state)}">${STATE[c.tracked.state]}</span>` : `<button class="small" data-add="${c.id}|${c.partitionDate}">Prenota questa</button><button class="small" data-addr="${c.id}|${c.partitionDate}">Ogni settimana</button>`) + `<button class="small" data-who="${c.id}|${c.partitionDate}" title="Chi partecipa">👥 ${c.numberOfParticipants || 0}</button>`;
       html += `<div class="item">${c.pictureUrl ? `<img src="${esc(c.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body"><div class="title">${fmtT(c.start)}–${fmtT(c.end)} · ${esc(c.name)}</div><div class="sub">${esc(c.assignedTo || '')}${c.room ? ' · ' + esc(c.room) : ''}</div><div class="row" style="margin-top:6px">${status} ${actions}</div></div></div>`;
       if (list[list.indexOf(c) + 1] && new Date(list[list.indexOf(c) + 1].start).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) !== d) html += '</div>';
     }
@@ -208,10 +208,81 @@ async function classes() {
     const add = (b, rec) => async () => { try { await api('/items', { method: 'POST', body: { profileId: currentProfile, classId: b.split('|')[0], partitionDate: +b.split('|')[1], recurring: rec } }); msg($('#m'), 'Aggiunta alle prenotazioni automatiche.', true); load(); } catch (e) { msg($('#m'), e.message); } };
     main.querySelectorAll('[data-add]').forEach(b => b.onclick = add(b.dataset.add, false));
     main.querySelectorAll('[data-addr]').forEach(b => b.onclick = add(b.dataset.addr, true));
+    main.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { const c = all.find(x => `${x.id}|${x.partitionDate}` === b.dataset.who); participantsDialog(currentProfile, c); });
   };
   const load = async (refresh) => { msg($('#m'), ''); try { all = await api(`/profiles/${currentProfile}/classes${refresh ? '?refresh=1' : ''}`); draw(); } catch (e) { if (stillHere(myView) && $('#m')) msg($('#m'), e.message); } };
   $('#q').oninput = draw; $('#rf').onclick = () => load(true); bindProfileSelect(load); load();
   autoRefresh(myView, () => load(false)); window.__refreshNow = () => stillHere(myView) && load(false);
+}
+
+/* ---------- persone: partecipanti, compagni di corso, classifica MOVEs (dati pubblici dei soci, db SQLite del gateway) ---------- */
+const fmtDay = d => { const t = new Date(d); return isNaN(t) ? (d || '') : t.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' }); };
+const seenBadge = m => m.seenCount > 1 ? `<span class="badge booked" title="${i18n.t('lezioni insieme a te o seguite dal gateway')}">${i18n.t('visto')} ${m.seenCount}×</span>` : `<span class="badge">${i18n.t('nuovo')}</span>`;
+const memberCard = m => `<div class="item" data-member="${esc(m.id)}" style="cursor:pointer">${avatar({ thumbUrl: m.private ? '' : m.pictureUrl }, m.private ? '?' : m.nickName, 48)}<div class="body"><div class="title">${m.private ? `<i class="mut">${i18n.t('Profilo privato')}</i>` : esc(m.nickName || '—')}</div>
+  <div class="sub">${(m.classes || []).slice(0, 3).map(esc).join(' · ')}${m.joinedOn ? ` · ${i18n.t('iscritto')} ${fmtD(m.joinedOn)}` : ''}${m.station ? ` · ${i18n.t('postazione')} ${esc(m.station)}` : ''}</div>
+  <div class="row" style="margin-top:4px">${seenBadge(m)}${m.bestWeekPosition ? `<span class="badge bursting">🏆 ${i18n.t('settimana')} #${m.bestWeekPosition}</span>` : ''}${m.bestMonthPosition ? `<span class="badge bursting">🏆 ${i18n.t('mese')} #${m.bestMonthPosition}</span>` : ''}</div></div></div>`;
+function bindMemberCards(root) { root.querySelectorAll('[data-member]').forEach(el => el.onclick = () => memberDialog(el.dataset.member)); }
+function ensureDialog() { let d = $('#pdlg'); if (!d) { d = document.createElement('dialog'); d.id = 'pdlg'; document.body.appendChild(d); } return d; }
+async function participantsDialog(profileId, c) {
+  const dlg = ensureDialog();
+  dlg.innerHTML = `<div class="dlg"><h2 style="margin:0 0 4px">${esc(c.name)}</h2><p class="mut" style="margin:0 0 10px">${fmtD(c.start)}${c.room ? ' · ' + esc(c.room) : ''}${c.assignedTo ? ' · ' + esc(c.assignedTo) : ''}</p><p class="mut" id="pd-m">${i18n.t('Lettura degli iscritti da mywellness…')}</p><div id="pd-list" class="grid"></div><p class="row" style="margin-top:12px"><button type="button" class="small" id="pd-close">Chiudi</button></p></div>`;
+  dlg.showModal(); $('#pd-close').onclick = () => dlg.close();
+  try {
+    const r = await api(`/profiles/${profileId}/classes/${c.id}/${c.partitionDate}/participants`);
+    $('#pd-m').textContent = `${r.participants.length} ${i18n.t('iscritti')} · ${i18n.t('aggiornato')} ${r.observedAt ? fmtD(r.observedAt) : '—'}${r.liveError ? ' · ' + r.liveError : ''}`;
+    $('#pd-list').innerHTML = r.participants.map(memberCard).join('') || `<p class="mut">${i18n.t('Nessun iscritto visibile.')}</p>`;
+    bindMemberCards(dlg);
+  } catch (e) { $('#pd-m').textContent = e.message; }
+}
+async function memberDialog(id) {
+  const dlg = ensureDialog();
+  dlg.innerHTML = `<div class="dlg"><p class="mut">${i18n.t('Caricamento…')}</p></div>`; dlg.showModal();
+  try {
+    const r = await api('/people/members/' + encodeURIComponent(id)); const m = r.member;
+    dlg.innerHTML = `<div class="dlg"><div class="row" style="gap:12px">${avatar({ thumbUrl: m.private ? '' : m.pictureUrl }, m.private ? '?' : m.nickName, 64)}<div><h2 style="margin:0">${m.private ? i18n.t('Profilo privato') : esc(m.nickName || '—')}</h2><small class="mut">${i18n.t('visto')} ${m.seenCount}× · ${i18n.t('dal')} ${fmtDay(m.firstSeen)} · ${i18n.t('ultima volta')} ${fmtDay(m.lastSeen)}</small></div></div>
+      ${(m.classes || []).length ? `<p>${i18n.t('Lezioni frequentate')}: ${m.classes.map(esc).join(', ')}</p>` : ''}
+      ${r.leaderboard.length ? `<h3>${i18n.t('Classifica MOVEs')}</h3><table>${r.leaderboard.map(l => `<tr><td>${l.trend === 'week' ? i18n.t('settimana') : i18n.t('mese')} ${esc(l.period)}</td><td>#${l.position}</td><td>${l.moves} MOVEs</td></tr>`).join('')}</table>` : ''}
+      <h3>${i18n.t('Presenze registrate')} (${r.attendance.length})</h3><table>${r.attendance.map(a => `<tr><td>${fmtD(a.start)}</td><td>${esc(a.name)}</td><td class="mut">${esc(a.room || '')}${a.station ? ' · ' + esc(a.station) : ''}</td></tr>`).join('') || `<tr><td class="mut">—</td></tr>`}</table>
+      ${m.extra ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">ⓘ ${i18n.t('Dati tecnici')}</summary><pre style="font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(m.extra, null, 1))}</pre></details>` : ''}
+      <p class="row" style="margin-top:12px"><button type="button" class="small" id="pd-close">Chiudi</button></p></div>`;
+    $('#pd-close').onclick = () => dlg.close();
+  } catch (e) { dlg.innerHTML = `<div class="dlg"><p class="msg err">${esc(e.message)}</p><button type="button" class="small" onclick="this.closest('dialog').close()">Chiudi</button></div>`; }
+}
+async function peopleView() {
+  if (!profiles.length) return dashboard();
+  const myView = viewId;
+  const facs = [...new Map(profiles.map(p => [p.facilityId, p.facilityName])).entries()];
+  let fac = (profiles.find(p => p.id === currentProfile) || profiles[0]).facilityId, trend = 'week', period = '';
+  main.innerHTML = `<div class="card"><div class="row"><h1 style="margin:0">Persone</h1>${facs.length > 1 ? `<select id="pf" style="width:auto">${facs.map(([id, n]) => `<option value="${id}" ${id === fac ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : `<span class="mut">${esc(facs[0][1])}</span>`}<span id="pstats" class="mut"></span></div>
+    <p class="mut">Il gateway legge gli iscritti delle lezioni che segui o hai prenotato (ogni poche ore, e poco prima dell'inizio) e la classifica MOVEs del centro (ogni ora). Sono gli stessi dati pubblici che mostra l'app Technogym: nickname, foto, profilo privato; chi ha il profilo privato resta anonimo. Tutto resta nel database del gateway (people.db).</p></div>
+    <div class="card"><div class="row"><h2 style="margin:0">Classifica MOVEs</h2><select id="ptrend" style="width:auto"><option value="week">Settimanale</option><option value="month">Mensile</option></select><select id="pperiod" style="width:auto"></select></div><div id="podium" class="row" style="justify-content:center;gap:24px;margin:14px 0"></div><div id="lb"></div></div>
+    <div class="card"><div class="row"><h2 style="margin:0">Compagni di corso</h2><input id="pq" placeholder="Cerca nickname" style="max-width:260px"></div><div id="members" class="grid" style="margin-top:10px"></div></div>`;
+  const loadLB = async () => {
+    try {
+      const r = await api(`/people/leaderboard?facility=${encodeURIComponent(fac)}&trend=${trend}${period ? '&period=' + encodeURIComponent(period) : ''}`);
+      if (!stillHere(myView)) return;
+      period = r.period;
+      $('#pperiod').innerHTML = r.periods.map(p => `<option value="${esc(p)}" ${p === r.period ? 'selected' : ''}>${esc(p)}</option>`).join('') || `<option value="">—</option>`;
+      const top = r.entries.slice(0, 3), rest = r.entries.slice(3);
+      $('#podium').innerHTML = top.length ? top.map(e => `<div style="text-align:center;cursor:${e.memberId ? 'pointer' : 'default'}" ${e.memberId ? `data-member="${esc(e.memberId)}"` : ''}><div class="mut">${e.position}</div>${avatar({ thumbUrl: e.pictureUrl }, e.nickName, e.position === 1 ? 88 : 72)}<div><b>${esc(e.nickName)}</b></div><div style="font-size:22px;font-weight:700">${e.moves}</div></div>`).join('') : `<p class="mut">${i18n.t('Nessuna classifica salvata ancora: il gateway la legge ogni ora (serve almeno un login mywellness riuscito).')}</p>`;
+      $('#lb').innerHTML = rest.length ? `<table>${rest.map(e => `<tr ${e.memberId ? `data-member="${esc(e.memberId)}" style="cursor:pointer"` : ''}><td style="width:40px">${e.position}</td><td class="row" style="gap:8px">${avatar({ thumbUrl: e.pictureUrl }, e.nickName, 28)}${esc(e.nickName)}</td><td style="text-align:right"><b>${e.moves}</b> MOVEs</td></tr>`).join('')}</table>` : '';
+      bindMemberCards(main);
+    } catch (e) { if (stillHere(myView)) $('#lb').innerHTML = `<p class="msg err">${esc(e.message)}</p>`; }
+  };
+  const loadMembers = async () => {
+    try {
+      const list = await api(`/people/members?facility=${encodeURIComponent(fac)}&q=${encodeURIComponent($('#pq').value)}&limit=300`);
+      if (!stillHere(myView)) return;
+      $('#members').innerHTML = list.map(memberCard).join('') || `<p class="mut">${i18n.t('Nessun socio ancora registrato: apri una lezione in Lezioni → 👥 oppure aspetta la prossima lettura automatica.')}</p>`;
+      bindMemberCards(main);
+      const st = await api('/people/stats'); if (stillHere(myView)) $('#pstats').textContent = `${st.members} ${i18n.t('soci')} · ${st.classes} ${i18n.t('lezioni')} · ${st.attendance} ${i18n.t('presenze')}`;
+    } catch (e) { if (stillHere(myView)) $('#members').innerHTML = `<p class="msg err">${esc(e.message)}</p>`; }
+  };
+  if ($('#pf')) $('#pf').onchange = () => { fac = $('#pf').value; period = ''; loadLB(); loadMembers(); };
+  $('#ptrend').onchange = () => { trend = $('#ptrend').value; period = ''; loadLB(); };
+  $('#pperiod').onchange = () => { period = $('#pperiod').value; loadLB(); };
+  let t; $('#pq').oninput = () => { clearTimeout(t); t = setTimeout(loadMembers, 250); };
+  loadLB(); loadMembers();
 }
 
 /* ---------- scheda profilo mywellness (dati normalizzati dal gateway, formattati nella lingua della UI) ---------- */

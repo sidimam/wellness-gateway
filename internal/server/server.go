@@ -117,6 +117,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/profiles/{id}", auth(s.deleteProfile))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/relogin", auth(s.reloginProfile))
 	mux.HandleFunc("GET /api/v1/profiles/{id}/classes", auth(s.classes))
+	mux.HandleFunc("GET /api/v1/profiles/{id}/classes/{classId}/{date}/participants", auth(s.classParticipants))
+	mux.HandleFunc("GET /api/v1/people/members", auth(s.peopleMembers))
+	mux.HandleFunc("GET /api/v1/people/members/{id}", auth(s.peopleMember))
+	mux.HandleFunc("GET /api/v1/people/leaderboard", auth(s.peopleLeaderboard))
+	mux.HandleFunc("GET /api/v1/people/stats", auth(s.peopleStats))
 	mux.HandleFunc("GET /api/v1/profiles/{id}/bookings", auth(s.bookings))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/unbook", auth(s.unbook))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/leave-waiting-list", auth(s.leaveWaitingList))
@@ -1381,4 +1386,134 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request, p principa
 		return nil
 	})
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// ---- soci e classifiche (dati pubblici dei soci raccolti dal gateway in /config/people.db)
+
+// facilitiesOf: i centri dei profili visibili al chiamante (per limitare cosa può leggere).
+func (s *Server) facilitiesOf(p principal) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	s.Store.Read(func(st *model.State) {
+		for _, pr := range st.Profiles {
+			if engine.Visible(pr, p.user.ID, p.seesAll()) && pr.FacilityID != "" && !seen[pr.FacilityID] {
+				seen[pr.FacilityID] = true
+				out = append(out, pr.FacilityID)
+			}
+		}
+	})
+	return out
+}
+
+func (s *Server) peopleReady(w http.ResponseWriter) bool {
+	if s.Engine.People == nil {
+		writeErr(w, 503, "database soci non attivo")
+		return false
+	}
+	return true
+}
+
+// classParticipants: iscritti di una lezione, letti dal vivo (live=1, default) e arricchiti con lo storico.
+func (s *Server) classParticipants(w http.ResponseWriter, r *http.Request, p principal) {
+	if !s.peopleReady(w) {
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := s.visibleProfile(p, id); !ok {
+		writeErr(w, 404, "profilo non trovato")
+		return
+	}
+	classID := r.PathValue("classId")
+	date, _ := strconv.Atoi(r.PathValue("date"))
+	if classID == "" || date == 0 {
+		writeErr(w, 400, "lezione non valida")
+		return
+	}
+	var liveErr string
+	if r.URL.Query().Get("live") != "0" {
+		if _, err := s.Engine.FetchParticipants(r.Context(), id, classID, date); err != nil {
+			liveErr = err.Error()
+		}
+	}
+	members, observed, err := s.Engine.People.ClassParticipants(r.Context(), classID, date)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"participants": members, "observedAt": observed, "liveError": liveErr})
+}
+
+func (s *Server) peopleMembers(w http.ResponseWriter, r *http.Request, p principal) {
+	if !s.peopleReady(w) {
+		return
+	}
+	facs := s.facilitiesOf(p)
+	if f := r.URL.Query().Get("facility"); f != "" {
+		if !contains(facs, f) {
+			writeErr(w, 404, "centro non visibile")
+			return
+		}
+		facs = []string{f}
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	members, err := s.Engine.People.Members(r.Context(), facs, r.URL.Query().Get("q"), limit)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, members)
+}
+
+func (s *Server) peopleMember(w http.ResponseWriter, r *http.Request, p principal) {
+	if !s.peopleReady(w) {
+		return
+	}
+	m, att, lb, err := s.Engine.People.Member(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, 404, "socio non trovato")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"member": m, "attendance": att, "leaderboard": lb})
+}
+
+func (s *Server) peopleLeaderboard(w http.ResponseWriter, r *http.Request, p principal) {
+	if !s.peopleReady(w) {
+		return
+	}
+	facs := s.facilitiesOf(p)
+	f := r.URL.Query().Get("facility")
+	if f == "" && len(facs) > 0 {
+		f = facs[0]
+	}
+	if !contains(facs, f) {
+		writeErr(w, 404, "centro non visibile")
+		return
+	}
+	trend := r.URL.Query().Get("trend")
+	if trend != "month" {
+		trend = "week"
+	}
+	rows, period, err := s.Engine.People.Leaderboard(r.Context(), f, trend, r.URL.Query().Get("period"))
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	periods, _ := s.Engine.People.Periods(r.Context(), f, trend)
+	writeJSON(w, 200, map[string]any{"facilityId": f, "trend": trend, "period": period, "periods": periods, "entries": rows})
+}
+
+func (s *Server) peopleStats(w http.ResponseWriter, r *http.Request, p principal) {
+	if !s.peopleReady(w) {
+		return
+	}
+	writeJSON(w, 200, s.Engine.People.Stats(r.Context(), s.facilitiesOf(p)))
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

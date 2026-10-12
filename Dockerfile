@@ -2,7 +2,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
 ARG TARGETOS TARGETARCH VERSION=dev
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \

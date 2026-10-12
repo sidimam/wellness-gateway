@@ -15,6 +15,7 @@ import (
 
 	"github.com/sidimam/wellness-gateway/internal/apns"
 	"github.com/sidimam/wellness-gateway/internal/engine"
+	"github.com/sidimam/wellness-gateway/internal/people"
 	"github.com/sidimam/wellness-gateway/internal/server"
 	"github.com/sidimam/wellness-gateway/internal/store"
 )
@@ -58,11 +59,18 @@ func main() {
 	}
 
 	eng := engine.New(st, push)
+	if pdb, err := people.Open(dataDir); err != nil {
+		log.Printf("database soci non disponibile: %v", err)
+	} else {
+		eng.People = pdb
+		defer pdb.Close()
+	}
 	srv := server.New(st, eng, trustProxy, push != nil, publicURL)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go eng.Run(ctx)
+	go eng.RunPeople(ctx)
 
 	hs := &http.Server{Addr: listen, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
