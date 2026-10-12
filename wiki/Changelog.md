@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.3 (2026-10-12)
+- **People for everyone**: the collector now reads the participants of **all** classes of the club for today and tomorrow (one profile per club, ≤ 1 read per class every 3 hours, 2 s apart), besides the tracked/booked classes of the next 7 days. Users without bookings (and administrators without their own mywellness profile) see the club's people and leaderboard too.
+
 ## v0.2.2 (2026-10-12)
 - **Fix (web UI behind Cloudflare)**: `app.js`, `i18n.js` and `app.css` are now served with `Cache-Control: no-store` and referenced with `?v=<version>` from `index.html`. Cloudflare was caching the old `app.js` for 4 hours, so after an update the page (new) ran with the old script: the new "Persone" page and the 👥 button did not work until the cache expired.
 

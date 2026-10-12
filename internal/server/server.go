@@ -1399,13 +1399,14 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request, p principa
 
 // ---- soci e classifiche (dati pubblici dei soci raccolti dal gateway in /config/people.db)
 
-// facilitiesOf: i centri dei profili visibili al chiamante (per limitare cosa può leggere).
+// facilitiesOf: i centri dei profili visibili al chiamante (per limitare cosa può leggere); l'amministratore
+// vede tutti i centri anche senza un profilo mywellness proprio.
 func (s *Server) facilitiesOf(p principal) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	s.Store.Read(func(st *model.State) {
 		for _, pr := range st.Profiles {
-			if engine.Visible(pr, p.user.ID, p.seesAll()) && pr.FacilityID != "" && !seen[pr.FacilityID] {
+			if (p.user.IsAdmin || engine.Visible(pr, p.user.ID, p.seesAll())) && pr.FacilityID != "" && !seen[pr.FacilityID] {
 				seen[pr.FacilityID] = true
 				out = append(out, pr.FacilityID)
 			}

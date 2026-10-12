@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-12 (v0.2.2)
+  <Changes>### 2026-10-12 (v0.2.3)
+- People collected for all classes of today and tomorrow: users without bookings see the club people too.
+
+### 2026-10-12 (v0.2.2)
 - Fix: web UI assets no longer cached by Cloudflare (no-store + versioned URLs).
 
 ### 2026-10-12 (v0.2.1)

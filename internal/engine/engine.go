@@ -1195,9 +1195,10 @@ func Normalize(s *model.Settings) {
 
 // ---- soci e classifiche (raccolta a bassa frequenza, separata dal motore di prenotazione) ----
 
-// RunPeople raccoglie ogni 15 minuti i partecipanti delle lezioni seguite o prenotate (nei prossimi 7 giorni,
-// al più ogni 3 ore per lezione, più una lettura nei 40 minuti prima dell'inizio) e ogni ora la classifica
-// MOVEs del centro. Letture autenticate ma rade: non toccano i tempi della prenotazione.
+// RunPeople raccoglie ogni 15 minuti i partecipanti di TUTTE le lezioni del centro di oggi e domani e di quelle
+// seguite o prenotate nei prossimi 7 giorni (al più ogni 3 ore per lezione, più una lettura nei 40 minuti prima
+// dell'inizio), e ogni ora la classifica MOVEs del centro. Così anche chi non prenota vede le persone del centro.
+// Letture autenticate ma rade e distanziate di 2 s: non toccano i tempi della prenotazione.
 func (e *Engine) RunPeople(ctx context.Context) {
 	if e.People == nil {
 		return
@@ -1231,17 +1232,23 @@ func (e *Engine) collectParticipants(ctx context.Context) {
 				tracked[it.ProfileID+"|"+it.ClassID+"|"+itoa(it.PartitionDate)] = true
 			}
 		}
+		// fine di domani (ora di Roma): tutte le lezioni fino a lì, per ogni centro (un profilo per centro)
+		rome := now.In(mywellness.Rome)
+		endTomorrow := time.Date(rome.Year(), rome.Month(), rome.Day()+2, 0, 0, 0, 0, mywellness.Rome)
+		facilityDone := map[string]bool{}
 		e.mu.Lock()
 		for _, p := range st.Profiles {
 			c, ok := e.calendars[p.ID]
 			if !ok {
 				continue
 			}
+			allOfFacility := !facilityDone[p.FacilityID]
+			facilityDone[p.FacilityID] = true
 			for _, ev := range c.events {
 				if ev.Start().Before(now) || ev.Start().After(now.Add(7*24*time.Hour)) {
 					continue
 				}
-				if ev.IsParticipant || ev.IsInWaitingList || tracked[p.ID+"|"+ev.Key()] {
+				if (allOfFacility && ev.Start().Before(endTomorrow)) || ev.IsParticipant || ev.IsInWaitingList || tracked[p.ID+"|"+ev.Key()] {
 					targets = append(targets, target{p.ID, ev})
 				}
 			}
