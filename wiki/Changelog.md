@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.4 (2026-10-22)
+- Web UI: a non-admin user can change **their own gateway password** from their card (new field *Current gateway password*; `POST /api/v1/me/password`, which already existed for the app). Until now the web UI only showed "use the app or ask an administrator", and the mywellness password was the only one that could be changed there. The mywellness password is untouched.
+
 ## v0.2.3 (2026-10-12)
 - **People for everyone**: the collector now reads the participants of **all** classes of the club for today and tomorrow (one profile per club, ≤ 1 read per class every 3 hours, 2 s apart), besides the tracked/booked classes of the next 7 days. Users without bookings (and administrators without their own mywellness profile) see the club's people and leaderboard too.
 

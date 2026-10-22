@@ -353,6 +353,7 @@ async function profilesView() {
         <div><label>Nome utente (per entrare)</label><input id="d-u" value="${esc(u.username)}" autocomplete="off" ${canEdit ? '' : 'disabled'}></div>
         <div><label>Nome</label><input id="d-d" value="${esc(u.displayName)}" ${canEdit ? '' : 'disabled'}></div>
         <div><label>${isNew ? 'Password gateway (almeno 6 caratteri)' : 'Nuova password gateway (vuoto = invariata)'}</label><input id="d-p" type="password" autocomplete="new-password" ${canEdit ? '' : 'disabled'}></div>
+        ${!isNew && !admin && canEdit ? `<div><label>Password gateway attuale (per cambiarla)</label><input id="d-op" type="password" autocomplete="current-password"></div>` : ''}
         <div><label>Ruolo</label><select id="d-a" ${admin ? '' : 'disabled'}><option value="0" ${u.isAdmin ? '' : 'selected'}>Utente</option><option value="1" ${u.isAdmin ? 'selected' : ''}>Amministratore</option></select></div>
       </div>
       <h3>Account mywellness</h3>
@@ -397,7 +398,12 @@ async function profilesView() {
             if (admin) body.isAdmin = $('#d-a').value === '1';
             if ($('#d-p').value) body.password = $('#d-p').value;
             if (admin) await api('/users/' + userId, { method: 'PUT', body });
-            else if ($('#d-p').value) { msg(m, i18n.t('Per cambiare la tua password usa l\'app o chiedi a un amministratore.')); }
+            else if ($('#d-p').value) {
+              // Self-service (0.2.4): the gateway password alone, the mywellness one stays as it is.
+              if (!$('#d-op') || !$('#d-op').value) { msg(m, i18n.t('Inserisci anche la password gateway attuale.')); return; }
+              await api('/me/password', { method: 'POST', body: { oldPassword: $('#d-op').value, newPassword: $('#d-p').value } });
+              msg(m, i18n.t('Password gateway aggiornata.'), true);
+            }
           }
           if (pr) {
             for (const p of mine) {
