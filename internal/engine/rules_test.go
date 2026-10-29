@@ -42,11 +42,20 @@ func TestFireAtValidFrom(t *testing.T) {
 			t.Errorf("%s %s: fireAt %s, atteso %s", c.name, c.start, got.In(mywellness.Rome).Format("2006-01-02 15:04"), c.want)
 		}
 	}
-	// con "segui l'orario del centro" il giorno viene da mywellness, l'ora dalla regola valida in quel giorno
-	opens := at("2026-11-01 07:00")
-	it := model.Item{Name: "Group Reformer", Start: at("2026-11-04 17:30"), ServerOpensOn: &opens}
-	if got := fireAt(it, wellnessTown(true)); !got.Equal(at("2026-11-01 07:01")) {
-		t.Errorf("follow server: fireAt %s, atteso 2026-11-01 07:01", got.In(mywellness.Rome).Format("2006-01-02 15:04"))
+	// con "segui l'orario del centro" il giorno viene da mywellness, l'ora dalla regola valida in quel giorno,
+	// ma mai prima dell'apertura comunicata (se il centro apre più tardi, un minuto dopo l'apertura)
+	follow := []struct{ start, opens, want string }{
+		{"2026-11-04 17:30", "2026-11-01 07:00", "2026-11-01 07:01"}, // regola nuova 07:01
+		{"2026-11-03 17:30", "2026-10-31 07:00", "2026-10-31 07:01"}, // regola 05:01 ma il centro apre alle 7
+		{"2026-11-03 17:30", "2026-10-31 05:00", "2026-10-31 05:01"}, // il centro apre alle 5: vale la regola
+		{"2026-11-06 17:30", "2026-11-03 05:00", "2026-11-03 07:01"}, // il centro dice 5 ma dal 1/11 la regola dice 7:01
+	}
+	for _, c := range follow {
+		opens := at(c.opens)
+		it := model.Item{Name: "Group Reformer", Start: at(c.start), ServerOpensOn: &opens}
+		if got := fireAt(it, wellnessTown(true)); !got.Equal(at(c.want)) {
+			t.Errorf("follow %s apre %s: fireAt %s, atteso %s", c.start, c.opens, got.In(mywellness.Rome).Format("2006-01-02 15:04"), c.want)
+		}
 	}
 }
 

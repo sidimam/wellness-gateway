@@ -185,6 +185,11 @@ func fireAt(it model.Item, s model.Settings) *time.Time {
 	// l'ora (e il resto) viene dalla regola valida nel giorno di APERTURA: dal 1/11 la Reformer apre alle 7
 	r = s.RuleOn(it.Name, day.Format("2006-01-02"))
 	t := time.Date(day.Year(), day.Month(), day.Day(), r.Hour, r.Minute, 0, 0, mywellness.Rome)
+	// Mai prima dell'apertura comunicata dal centro: se mywellness dice che apre più tardi dell'orario
+	// della regola (es. regola 05:01 ma il centro apre alle 07:00), si prova un minuto dopo l'apertura.
+	if s.FollowServerOpenTime && it.ServerOpensOn != nil && it.ServerOpensOn.After(t) {
+		t = it.ServerOpensOn.In(mywellness.Rome).Add(time.Minute)
+	}
 	return &t
 }
 
