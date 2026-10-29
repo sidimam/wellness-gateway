@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.7 (2026-10-29)
+- **Past classes hidden**: `GET /items` returns only classes that have not ended yet (`?past=1` for the history). Past items stay in the state because recurrences start from the oldest recurring item.
+- **Fix (duplicates after the club regenerates its calendar)**: the same class and time can get a new identifier on mywellness; the tracked item stayed on the old one (e.g. "Lezione non più in calendario", watched for nothing) while the recurrence attached a second item for the new one. Now a future item whose class disappeared is moved to the class with the same name and start time, or dropped if an item for it already exists; recurrences never attach a class whose name and time are already tracked.
+
 ## v0.2.6 (2026-10-29)
 - **Never before the club's opening**: with "follow the club's opening time", if mywellness reports an opening later than the rule's time on that day, the gateway fires one minute after the reported opening (e.g. rule 05:01 but the club opens at 07:00 → 07:01). The rule time still wins when it is later than the reported opening.
 

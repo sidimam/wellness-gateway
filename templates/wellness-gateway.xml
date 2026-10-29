@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-29 (v0.2.6)
+  <Changes>### 2026-10-29 (v0.2.7)
+- Past classes hidden from the lists; fixed duplicates when the club regenerates class identifiers.
+
+### 2026-10-29 (v0.2.6)
 - Never fire before the opening reported by the club (rule 05:01 but club opens 07:00 → 07:01).
 
 ### 2026-10-29 (v0.2.5)

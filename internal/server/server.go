@@ -1017,6 +1017,8 @@ func (s *Server) leaveWaitingList(w http.ResponseWriter, r *http.Request, p prin
 
 func (s *Server) listItems(w http.ResponseWriter, r *http.Request, p principal) {
 	pid := r.URL.Query().Get("profile")
+	past := r.URL.Query().Get("past") == "1" // lo storico resta nello stato (serve alle ricorrenze) ma non si mostra
+	now := time.Now()
 	out := []model.Item{}
 	s.Store.Read(func(st *model.State) {
 		vis := map[string]bool{}
@@ -1024,6 +1026,9 @@ func (s *Server) listItems(w http.ResponseWriter, r *http.Request, p principal) 
 			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.seesAll())
 		}
 		for _, it := range st.Items {
+			if !past && it.End.Before(now) {
+				continue
+			}
 			if vis[it.ProfileID] && (pid == "" || it.ProfileID == pid) {
 				out = append(out, it)
 			}

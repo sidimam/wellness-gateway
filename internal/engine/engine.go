@@ -501,8 +501,19 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 			active++
 		}
 	}
-	var booked, cancelled []model.Item
+	bySlot := map[string]mywellness.ClassEvent{} // stessa lezione (nome + ora di inizio), anche con un nuovo identificativo
+	for _, ev := range events {
+		bySlot[slotKey(ev.Name, ev.Start())] = ev
+	}
+	var booked, cancelled, moved, dropped []model.Item
 	_ = e.Store.Update(func(st *model.State) error {
+		itemKeys := map[string]bool{}
+		for _, it := range st.Items {
+			if it.ProfileID == profileID {
+				itemKeys[it.ClassID+"|"+itoa(it.PartitionDate)] = true
+			}
+		}
+		drop := map[int]bool{}
 		for i := range st.Items {
 			it := &st.Items[i]
 			if it.ProfileID != profileID {
@@ -510,7 +521,23 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 			}
 			ev, ok := byKey[it.ClassID+"|"+itoa(it.PartitionDate)]
 			if !ok {
-				continue
+				// Il centro a volte rigenera il calendario: stessa lezione, stessa ora, nuovo identificativo.
+				// La voce passa alla lezione nuova; se per quella c'è già una voce, questa è un doppione.
+				ev2, same := bySlot[slotKey(it.Name, it.Start)]
+				if !same || !it.Start.After(now) {
+					continue
+				}
+				if itemKeys[ev2.Key()] {
+					drop[i] = true
+					dropped = append(dropped, *it)
+					continue
+				}
+				delete(itemKeys, it.ClassID+"|"+itoa(it.PartitionDate))
+				it.ClassID, it.PartitionDate = ev2.ID, ev2.PartitionDate
+				it.ID = profileID + "|" + ev2.Key()
+				itemKeys[ev2.Key()] = true
+				moved = append(moved, *it)
+				ev = ev2
 			}
 			ap, mp := ev.AvailablePlaces, ev.MaxParticipants
 			it.Available, it.MaxPlaces = &ap, &mp
@@ -539,8 +566,24 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 				st.Profiles[i].ActiveBookings = active
 			}
 		}
+		if len(drop) > 0 {
+			kept := st.Items[:0]
+			for i, it := range st.Items {
+				if !drop[i] {
+					kept = append(kept, it)
+				}
+			}
+			st.Items = kept
+		}
 		return nil
 	})
+	for _, it := range moved {
+		e.logf("info", profileID, "%s %s: nuovo identificativo della lezione nel calendario del centro, voce aggiornata", it.Name, fmtTime(it.Start))
+	}
+	for _, it := range dropped {
+		delete(e.nextPoll, it.ID)
+		e.logf("info", profileID, "%s %s: doppione rimosso (stessa lezione con un nuovo identificativo)", it.Name, fmtTime(it.Start))
+	}
 	for _, it := range booked {
 		e.logf("success", profileID, "%s %s: già prenotata sul calendario", it.Name, fmtTime(it.Start))
 	}
@@ -556,11 +599,13 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 	_ = e.Store.Update(func(st *model.State) error {
 		rules := map[string]model.Item{} // regola → item ricorrente più vecchio (la ricorrenza parte da lì)
 		known := map[string]bool{}
+		slots := map[string]bool{} // nome + ora già seguiti (anche con un altro identificativo)
 		for _, it := range st.Items {
 			if it.ProfileID != profileID {
 				continue
 			}
 			known[it.ID] = true
+			slots[slotKey(it.Name, it.Start)] = true
 			if it.Recurring {
 				k := it.RuleKey(mywellness.Rome)
 				if cur, ok := rules[k]; !ok || it.Start.Before(cur.Start) {
@@ -577,7 +622,7 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 				continue
 			}
 			probe := itemFrom(profileID, ev, true, "")
-			if known[probe.ID] {
+			if known[probe.ID] || slots[slotKey(ev.Name, ev.Start())] {
 				continue
 			}
 			if src, ok := rules[probe.RuleKey(mywellness.Rome)]; ok {
@@ -601,6 +646,11 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 	for _, it := range added {
 		e.logf("info", profileID, "ricorrenza: aggiunta %s %s", it.Name, fmtTime(it.Start))
 	}
+}
+
+// slotKey identifica una lezione per nome e ora di inizio, indipendentemente dall'identificativo del centro.
+func slotKey(name string, start time.Time) string {
+	return strings.ToLower(strings.TrimSpace(name)) + "|" + start.UTC().Format(time.RFC3339)
 }
 
 func sortItems(items []model.Item) {

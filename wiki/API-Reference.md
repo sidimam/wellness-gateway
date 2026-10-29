@@ -10,6 +10,7 @@ Base path `/api/v1`, JSON. Authentication: `Authorization: Bearer <token>` obtai
 - `POST /devices/apns` `{token}` registers the APNs token of the calling device; `POST /devices/test-notification`
 
 ## Profiles
+- `GET /items[?profile][&past=1]` → tracked classes not yet ended (`past=1` includes the history).
 - `DELETE /items/{id}` (`?rule=1` for the recurrence) → removes the tracked class **and cancels it on mywellness** (unbook if booked, leave the waiting list if waiting); returns `{ok, removed, unbooked[], leftWaitingList[], errors[]}`. Classes whose cancellation fails are kept.
 - `GET /profiles/{id}/classes/{classId}/{date}/participants[?live=0]` → `{participants[], observedAt, liveError}`; each participant: `id, nickName, pictureUrl, private, joinedOn, station, equipment, seenCount, classes[], bestWeekPosition, bestMonthPosition, extra`.
 - `GET /people/members[?facility&q&limit]` → members seen in the caller's clubs (most frequent first). `GET /people/members/{id}` → `{member, attendance[], leaderboard[]}`. `GET /people/leaderboard?facility&trend=week|month[&period]` → `{facilityId, trend, period, periods[], entries[{position, nickName, pictureUrl, moves, memberId}]}`. `GET /people/stats` → `{members, classes, attendance, lastUpdate}`.
