@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-12 (v0.2.3)
+  <Changes>### 2026-10-29 (v0.2.5)
+- Rules with a validity date and a weekly limit (Reformer: 07:00 from 1 November, max 2 per week).
+
+### 2026-10-12 (v0.2.3)
 - People collected for all classes of today and tomorrow: users without bookings see the club people too.
 
 ### 2026-10-12 (v0.2.2)

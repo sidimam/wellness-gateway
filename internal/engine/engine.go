@@ -26,19 +26,20 @@ type Engine struct {
 	Push   *apns.Client // può essere nil
 	People *people.DB   // soci e classifiche (può essere nil)
 
-	mu        sync.Mutex
-	calendars map[string]calendar  // per profilo: calendario autenticato (daysAhead)
-	dayCache  map[string]calendar  // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
-	sessOK    map[string]time.Time // per profilo: ultima verifica positiva della sessione (GetLoginStatus)
-	nextPoll  map[string]time.Time
-	probes    map[string]calendar  // per struttura|giorno: ultima lettura PUBBLICA (senza token) dell'osservazione
-	lastAuth  map[string]time.Time // per item: ultima lettura autenticata durante l'osservazione
-	lastWarn  map[string]time.Time // per item: ultimo avviso di rete nel registro
-	peopleAt  map[string]time.Time // per lezione: ultima lettura dei partecipanti
-	lastFull  time.Time
-	wake      chan struct{}
-	NextWake  time.Time
-	Started   time.Time
+	mu           sync.Mutex
+	calendars    map[string]calendar  // per profilo: calendario autenticato (daysAhead)
+	dayCache     map[string]calendar  // per profilo|giorno: ultima lettura dell'osservazione (condivisa tra le lezioni del giorno)
+	sessOK       map[string]time.Time // per profilo: ultima verifica positiva della sessione (GetLoginStatus)
+	nextPoll     map[string]time.Time
+	probes       map[string]calendar  // per struttura|giorno: ultima lettura PUBBLICA (senza token) dell'osservazione
+	lastAuth     map[string]time.Time // per item: ultima lettura autenticata durante l'osservazione
+	lastWarn     map[string]time.Time // per item: ultimo avviso di rete nel registro
+	peopleAt     map[string]time.Time // per lezione: ultima lettura dei partecipanti
+	limitBlocked map[string]bool      // per item: bloccato da un limite (settimanale), niente ritmo accelerato
+	lastFull     time.Time
+	wake         chan struct{}
+	NextWake     time.Time
+	Started      time.Time
 }
 
 type calendar struct {
@@ -48,7 +49,7 @@ type calendar struct {
 
 // New crea il motore.
 func New(st *store.Store, push *apns.Client) *Engine {
-	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, probes: map[string]calendar{}, lastAuth: map[string]time.Time{}, lastWarn: map[string]time.Time{}, peopleAt: map[string]time.Time{}, wake: make(chan struct{}, 1), Started: time.Now()}
+	return &Engine{Store: st, MW: mywellness.New(), Push: push, calendars: map[string]calendar{}, dayCache: map[string]calendar{}, sessOK: map[string]time.Time{}, nextPoll: map[string]time.Time{}, probes: map[string]calendar{}, lastAuth: map[string]time.Time{}, lastWarn: map[string]time.Time{}, peopleAt: map[string]time.Time{}, limitBlocked: map[string]bool{}, wake: make(chan struct{}, 1), Started: time.Now()}
 }
 
 // Kick sveglia il loop (dopo modifiche da API).
@@ -173,16 +174,54 @@ func fmtTime(t time.Time) string { return t.In(mywellness.Rome).Format("Mon 2 Ja
 // (specifica, altrimenti *). Il GIORNO viene dall'apertura comunicata dal centro se "segui il centro" è
 // attivo e il centro la comunica, altrimenti da "giorni prima" della regola.
 func fireAt(it model.Item, s model.Settings) *time.Time {
-	r := s.Rule(it.Name)
+	st := it.Start.In(mywellness.Rome)
+	r := s.RuleOn(it.Name, st.Format("2006-01-02")) // solo per i "giorni prima"
 	var day time.Time
 	if s.FollowServerOpenTime && it.ServerOpensOn != nil {
 		day = it.ServerOpensOn.In(mywellness.Rome)
 	} else {
-		st := it.Start.In(mywellness.Rome)
 		day = time.Date(st.Year(), st.Month(), st.Day()-r.DaysBefore, 0, 0, 0, 0, mywellness.Rome)
 	}
+	// l'ora (e il resto) viene dalla regola valida nel giorno di APERTURA: dal 1/11 la Reformer apre alle 7
+	r = s.RuleOn(it.Name, day.Format("2006-01-02"))
 	t := time.Date(day.Year(), day.Month(), day.Day(), r.Hour, r.Minute, 0, 0, mywellness.Rome)
 	return &t
+}
+
+// weekBounds: lunedì 00:00 e lunedì successivo (ora di Roma) della settimana di t.
+func weekBounds(t time.Time) (time.Time, time.Time) {
+	r := t.In(mywellness.Rome)
+	mon := time.Date(r.Year(), r.Month(), r.Day()-(int(r.Weekday())+6)%7, 0, 0, 0, 0, mywellness.Rome)
+	return mon, mon.AddDate(0, 0, 7)
+}
+
+// WeekCount conta le prenotazioni del profilo che ricadono nella regola e nella stessa settimana (lun-dom) di
+// when, escludendo la lezione exclude (classId|partitionDate). Vale anche per quelle fatte dall'app Technogym.
+func (e *Engine) WeekCount(profileID string, r model.OpenRule, when time.Time, exclude string) int {
+	pat := strings.ToLower(strings.TrimSpace(r.Pattern))
+	from, to := weekBounds(when)
+	in := func(name string, t time.Time) bool {
+		return !t.Before(from) && t.Before(to) && (pat == "*" || strings.Contains(strings.ToLower(name), pat))
+	}
+	seen := map[string]bool{}
+	e.mu.Lock()
+	if c, ok := e.calendars[profileID]; ok {
+		for _, ev := range c.events {
+			if ev.IsParticipant && ev.Key() != exclude && in(ev.Name, ev.Start()) {
+				seen[ev.Key()] = true
+			}
+		}
+	}
+	e.mu.Unlock()
+	e.Store.Read(func(st *model.State) {
+		for _, it := range st.Items {
+			k := it.ClassID + "|" + itoa(it.PartitionDate)
+			if it.ProfileID == profileID && it.State == model.StateBooked && k != exclude && in(it.Name, it.Start) {
+				seen[k] = true
+			}
+		}
+	})
+	return len(seen)
 }
 
 // RuleCount conta le prenotazioni attive del profilo che ricadono in una regola (per il limite per regola).
@@ -818,7 +857,27 @@ func (e *Engine) attempt(ctx context.Context, id, reason string) {
 	}
 	// Una lezione con quota propria (es. Reformer: massimo 3) è soggetta SOLO a quella quota;
 	// tutte le altre contano nel limite generale del profilo (default 5).
-	if r, own := e.settingsFor(it.ProfileID).OwnQuota(it.Name); own {
+	// limite settimanale della regola (es. Reformer: massimo 2 a settimana), contando anche le prenotazioni
+	// fatte dall'app o dal sito Technogym
+	key := it.ClassID + "|" + itoa(it.PartitionDate)
+	cfg := e.settingsFor(it.ProfileID)
+	if r, ok := cfg.SpecificRule(it.Name); ok && r.MaxPerWeek > 0 {
+		if n := e.WeekCount(it.ProfileID, r, it.Start, key); n >= r.MaxPerWeek {
+			first := !e.limitBlocked[id]
+			e.limitBlocked[id] = true
+			from, _ := weekBounds(it.Start)
+			e.setItem(id, func(x *model.Item) {
+				x.Attempts++
+				x.LastMessage = fmt.Sprintf("Limite settimanale \"%s\" raggiunto (%d/%d nella settimana del %s): riprovo se ne disdici una", r.Pattern, n, r.MaxPerWeek, from.Format("2/1"))
+			})
+			if first {
+				e.logf("warn", it.ProfileID, "%s %s: limite settimanale %s (%d/%d) raggiunto", it.Name, fmtTime(it.Start), r.Pattern, n, r.MaxPerWeek)
+			}
+			return
+		}
+	}
+	delete(e.limitBlocked, id)
+	if r, own := cfg.OwnQuota(it.Name); own {
 		if n := e.RuleCount(it.ProfileID, r); n >= r.MaxBookings {
 			first := it.Attempts == 0
 			e.setItem(id, func(x *model.Item) {
@@ -966,7 +1025,7 @@ func (e *Engine) watch(ctx context.Context, id string) {
 				time.Sleep(700 * time.Millisecond)
 			}
 		}
-		if cur, ok := e.item(id); ok && cur.State != model.StateBooked {
+		if cur, ok := e.item(id); ok && cur.State != model.StateBooked && !e.limitBlocked[id] {
 			e.nextPoll[id] = time.Now().Add(2 * time.Second)
 			e.lastAuth[id] = time.Time{} // alla prossima lettura verifica subito se la prenotazione è passata
 		}
@@ -1181,6 +1240,15 @@ func Normalize(s *model.Settings) {
 	hasDefault := false
 	for i := range s.OpenRules {
 		s.OpenRules[i].Pattern = strings.TrimSpace(s.OpenRules[i].Pattern)
+		if vf := strings.TrimSpace(s.OpenRules[i].ValidFrom); vf != "" {
+			if _, err := time.Parse("2006-01-02", vf); err != nil {
+				vf = ""
+			}
+			s.OpenRules[i].ValidFrom = vf
+		}
+		if s.OpenRules[i].MaxPerWeek < 0 {
+			s.OpenRules[i].MaxPerWeek = 0
+		}
 		if s.OpenRules[i].Pattern == "*" {
 			hasDefault = true
 		}

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.5 (2026-10-29)
+- **Rules with a validity date** (`validFrom`, YYYY-MM-DD): a rule applies to openings from that day on; for the same class name the rule with the most recent date already reached wins. The opening time is taken from the rule valid on the **opening day** (not the class day). Used for the Wellness Town change of 1 November 2026: Reformer still opens 3 days before but at **07:00** instead of 05:00 (gateway rule 07:01 from 2026-11-01, 05:01 until 31 October).
+- **Weekly limit per rule** (`maxPerWeek`): at most N bookings of that kind of class in the same week (Monday–Sunday of the class, Europe/Rome), counting bookings made in the Technogym app or website too. Reformer: 2 per week. A class blocked by the weekly limit is retried only when one of the week is cancelled, without the fast 2 s watching pace.
+- `GET /profiles` → `limits[]` gains `perWeek` and `thisWeek`, and lists each rule name once (the rule valid today).
+- Web UI: "Valida dal" and "Max a settimana" columns in the rules table; fixed the class preview overwriting the "Max prenotazioni" cell while typing. iOS app build 21 keeps and edits the new fields.
+
 ## v0.2.4 (2026-10-22)
 - Web UI: a non-admin user can change **their own gateway password** from their card (new field *Current gateway password*; `POST /api/v1/me/password`, which already existed for the app). Until now the web UI only showed "use the app or ask an administrator", and the mywellness password was the only one that could be changed there. The mywellness password is untouched.
 

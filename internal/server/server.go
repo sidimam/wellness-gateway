@@ -509,9 +509,11 @@ func (s *Server) visibleProfile(p principal, id string) (model.Profile, bool) {
 }
 
 type limitInfo struct {
-	Pattern string `json:"pattern"`
-	Active  int    `json:"active"`
-	Max     int    `json:"max"`
+	Pattern  string `json:"pattern"`
+	Active   int    `json:"active"`
+	Max      int    `json:"max"`
+	PerWeek  int    `json:"perWeek,omitempty"`  // massimo a settimana (0 = nessuno)
+	ThisWeek int    `json:"thisWeek,omitempty"` // prenotate nella settimana corrente
 }
 
 type profileOut struct {
@@ -627,11 +629,23 @@ func buildCard(pr model.Profile) *identityCard {
 
 func (s *Server) profileOut(pr model.Profile, settings model.Settings) profileOut {
 	o := profileOut{Profile: pr, Limits: []limitInfo{}, Card: buildCard(pr)}
-	for _, r := range settings.OpenRules {
-		pat := strings.TrimSpace(r.Pattern)
-		if r.MaxBookings > 0 && pat != "" && pat != "*" {
-			o.Limits = append(o.Limits, limitInfo{Pattern: pat, Active: s.Engine.RuleCount(pr.ID, r), Max: r.MaxBookings})
+	seen := map[string]bool{}
+	for _, r0 := range settings.OpenRules {
+		pat := strings.TrimSpace(r0.Pattern)
+		if pat == "" || pat == "*" || seen[strings.ToLower(pat)] {
+			continue
 		}
+		seen[strings.ToLower(pat)] = true
+		// la regola valida oggi per quel nome (con le date di validità può essercene più d'una)
+		r, ok := settings.SpecificRule(pat)
+		if !ok || (r.MaxBookings == 0 && r.MaxPerWeek == 0) {
+			continue
+		}
+		li := limitInfo{Pattern: pat, Active: s.Engine.RuleCount(pr.ID, r), Max: r.MaxBookings, PerWeek: r.MaxPerWeek}
+		if r.MaxPerWeek > 0 {
+			li.ThisWeek = s.Engine.WeekCount(pr.ID, r, time.Now(), "")
+		}
+		o.Limits = append(o.Limits, li)
 	}
 	return o
 }

@@ -60,8 +60,16 @@ type OpenRule struct {
 	DaysBefore  int    `json:"daysBefore"`
 	Hour        int    `json:"hour"`
 	Minute      int    `json:"minute"`
-	MaxBookings int    `json:"maxBookings"` // 0 = nessun limite specifico per questa regola
+	MaxBookings int    `json:"maxBookings"`          // 0 = nessun limite specifico per questa regola
+	MaxPerWeek  int    `json:"maxPerWeek,omitempty"` // prenotazioni massime per settimana (lun-dom della lezione); 0 = nessun limite
+	ValidFrom   string `json:"validFrom,omitempty"`  // YYYY-MM-DD: la regola vale per le aperture da questo giorno in poi (vuoto = sempre)
 }
+
+// appliesOn: la regola vale per un'apertura nel giorno day (YYYY-MM-DD).
+func (r OpenRule) appliesOn(day string) bool { return r.ValidFrom == "" || r.ValidFrom <= day }
+
+// today: il giorno corrente (il container gira con TZ=Europe/Rome).
+func today() string { return time.Now().Format("2006-01-02") }
 
 // Settings globali del motore.
 type Settings struct {
@@ -91,18 +99,29 @@ func DefaultSettings() Settings {
 	}
 }
 
-// SpecificRule restituisce la regola non predefinita che corrisponde al nome, se esiste.
-func (s Settings) SpecificRule(className string) (OpenRule, bool) {
-	for _, r := range s.OpenRules {
+// SpecificRuleOn restituisce la regola non predefinita che corrisponde al nome e vale nel giorno day
+// (YYYY-MM-DD). Tra più regole valide vince quella con la data di validità più recente; a parità, la prima.
+func (s Settings) SpecificRuleOn(className, day string) (OpenRule, bool) {
+	var best *OpenRule
+	for i := range s.OpenRules {
+		r := &s.OpenRules[i]
 		p := trim(r.Pattern)
-		if p == "" || p == "*" {
+		if p == "" || p == "*" || !r.appliesOn(day) || !containsFold(className, p) {
 			continue
 		}
-		if containsFold(className, p) {
-			return r, true
+		if best == nil || r.ValidFrom > best.ValidFrom {
+			best = r
 		}
 	}
-	return OpenRule{}, false
+	if best == nil {
+		return OpenRule{}, false
+	}
+	return *best, true
+}
+
+// SpecificRule: come SpecificRuleOn, per oggi.
+func (s Settings) SpecificRule(className string) (OpenRule, bool) {
+	return s.SpecificRuleOn(className, today())
 }
 
 // OwnQuota restituisce la regola con un massimo proprio (es. Reformer 3) che copre la lezione:
@@ -115,23 +134,17 @@ func (s Settings) OwnQuota(className string) (OpenRule, bool) {
 	return OpenRule{}, false
 }
 
-// Rule restituisce la regola applicabile a una lezione.
-func (s Settings) Rule(className string) OpenRule {
+// RuleOn restituisce la regola applicabile a una lezione per un'apertura nel giorno day (YYYY-MM-DD):
+// prima le regole con nome, poi la regola "*"; tra regole valide vince la data di validità più recente.
+func (s Settings) RuleOn(className, day string) OpenRule {
+	if r, ok := s.SpecificRuleOn(className, day); ok {
+		return r
+	}
 	var def *OpenRule
 	for i := range s.OpenRules {
-		r := s.OpenRules[i]
-		p := trim(r.Pattern)
-		if p == "*" {
-			if def == nil {
-				def = &s.OpenRules[i]
-			}
-			continue
-		}
-		if p == "" {
-			continue
-		}
-		if containsFold(className, p) {
-			return r
+		r := &s.OpenRules[i]
+		if trim(r.Pattern) == "*" && r.appliesOn(day) && (def == nil || r.ValidFrom > def.ValidFrom) {
+			def = r
 		}
 	}
 	if def != nil {
@@ -139,6 +152,9 @@ func (s Settings) Rule(className string) OpenRule {
 	}
 	return OpenRule{Pattern: "*", DaysBefore: 7, Hour: 5}
 }
+
+// Rule: come RuleOn, per oggi.
+func (s Settings) Rule(className string) OpenRule { return s.RuleOn(className, today()) }
 
 // WatchState è lo stato di una lezione seguita.
 type WatchState string
