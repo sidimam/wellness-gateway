@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-29 (v0.2.8)
+  <Changes>### 2026-10-29 (v0.2.9)
+- Name and surname above the nickname, enlargeable member photos, faster name backfill.
+
+### 2026-10-29 (v0.2.8)
 - Members' first and last name from their public mywellness profile (private profiles stay anonymous; no weight/age/heart-rate data).
 
 ### 2026-10-29 (v0.2.7)

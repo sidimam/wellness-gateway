@@ -33,3 +33,5 @@ button.small{padding:6px 10px;border-radius:8px;border:1px solid var(--line);bac
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px;border-bottom:1px solid var(--line);font-size:14px}
 .day{margin:14px 0 6px;font-weight:700;color:var(--mut)}
 @media(max-width:640px){header{flex-direction:column;align-items:flex-start}}
+.nick{font-size:13px;font-weight:400;color:var(--mut);margin-top:1px}.zoomable{cursor:zoom-in;display:inline-flex}.zoomable:hover .avatar{box-shadow:0 0 0 3px var(--teal)}
+dialog#zdlg{border:0;padding:0;background:transparent;max-width:min(92vw,720px);max-height:92vh;cursor:zoom-out}dialog#zdlg::backdrop{background:rgba(0,0,0,.8)}dialog#zdlg img{display:block;max-width:min(92vw,720px);max-height:92vh;border-radius:14px;object-fit:contain}

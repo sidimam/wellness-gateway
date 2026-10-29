@@ -219,11 +219,18 @@ async function classes() {
 const fmtDay = d => { const t = new Date(d); return isNaN(t) ? (d || '') : t.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' }); };
 const seenBadge = m => m.seenCount > 1 ? `<span class="badge booked" title="${i18n.t('lezioni insieme a te o seguite dal gateway')}">${i18n.t('visto')} ${m.seenCount}×</span>` : `<span class="badge">${i18n.t('nuovo')}</span>`;
 const fullName = m => [m.firstName, m.lastName].filter(Boolean).join(' ');
-const memberTitle = m => m.private ? `<i class="mut">${i18n.t('Profilo privato')}</i>` : (fullName(m) ? `${esc(fullName(m))}${m.nickName ? ` <small class="mut">${esc(m.nickName)}</small>` : ''}` : esc(m.nickName || '—'));
-const memberCard = m => `<div class="item" data-member="${esc(m.id)}" style="cursor:pointer">${avatar({ thumbUrl: m.private ? '' : m.pictureUrl }, m.private ? '?' : (fullName(m) || m.nickName), 48)}<div class="body"><div class="title">${memberTitle(m)}</div>
+const memberTitle = m => m.private ? `<i class="mut">${i18n.t('Profilo privato')}</i>` : (fullName(m) ? `${esc(fullName(m))}${m.nickName ? `<div class="nick">${esc(m.nickName)}</div>` : ''}` : esc(m.nickName || '—'));
+// foto del socio ingrandibile: un clic apre la versione grande (Esc o clic per chiudere)
+const zoomAvatar = (m, size) => !m.private && m.pictureUrl ? `<span class="zoomable" data-zoom="${esc(m.pictureUrl)}" title="${i18n.t('Ingrandisci')}">${avatar({ pictureUrl: m.pictureUrl }, fullName(m) || m.nickName, size)}</span>` : avatar({}, m.private ? '?' : (fullName(m) || m.nickName), size);
+function showPhoto(url) {
+  let z = $('#zdlg'); if (!z) { z = document.createElement('dialog'); z.id = 'zdlg'; document.body.appendChild(z); z.onclick = () => z.close(); }
+  z.innerHTML = `<img src="${esc(url)}" alt="">`; z.showModal();
+}
+function bindZoom(root) { root.querySelectorAll('[data-zoom]').forEach(el => el.onclick = ev => { ev.stopPropagation(); showPhoto(el.dataset.zoom); }); }
+const memberCard = m => `<div class="item" data-member="${esc(m.id)}" style="cursor:pointer">${zoomAvatar(m, 48)}<div class="body"><div class="title">${memberTitle(m)}</div>
   <div class="sub">${(m.classes || []).slice(0, 3).map(esc).join(' · ')}${m.joinedOn ? ` · ${i18n.t('iscritto')} ${fmtD(m.joinedOn)}` : ''}${m.station ? ` · ${i18n.t('postazione')} ${esc(m.station)}` : ''}</div>
   <div class="row" style="margin-top:4px">${seenBadge(m)}${m.bestWeekPosition ? `<span class="badge bursting">🏆 ${i18n.t('settimana')} #${m.bestWeekPosition}</span>` : ''}${m.bestMonthPosition ? `<span class="badge bursting">🏆 ${i18n.t('mese')} #${m.bestMonthPosition}</span>` : ''}</div></div></div>`;
-function bindMemberCards(root) { root.querySelectorAll('[data-member]').forEach(el => el.onclick = () => memberDialog(el.dataset.member)); }
+function bindMemberCards(root) { root.querySelectorAll('[data-member]').forEach(el => el.onclick = () => memberDialog(el.dataset.member)); bindZoom(root); }
 function ensureDialog() { let d = $('#pdlg'); if (!d) { d = document.createElement('dialog'); d.id = 'pdlg'; document.body.appendChild(d); } return d; }
 async function participantsDialog(profileId, c) {
   const dlg = ensureDialog();
@@ -241,13 +248,13 @@ async function memberDialog(id) {
   dlg.innerHTML = `<div class="dlg"><p class="mut">${i18n.t('Caricamento…')}</p></div>`; dlg.showModal();
   try {
     const r = await api('/people/members/' + encodeURIComponent(id)); const m = r.member;
-    dlg.innerHTML = `<div class="dlg"><div class="row" style="gap:12px">${avatar({ thumbUrl: m.private ? '' : m.pictureUrl }, m.private ? '?' : (fullName(m) || m.nickName), 64)}<div><h2 style="margin:0">${m.private ? i18n.t('Profilo privato') : esc(fullName(m) || m.nickName || '—')}</h2>${!m.private && fullName(m) && m.nickName ? `<div class="mut">${esc(m.nickName)}</div>` : ''}<small class="mut">${i18n.t('visto')} ${m.seenCount}× · ${i18n.t('dal')} ${fmtDay(m.firstSeen)} · ${i18n.t('ultima volta')} ${fmtDay(m.lastSeen)}</small></div></div>
+    dlg.innerHTML = `<div class="dlg"><div class="row" style="gap:12px">${zoomAvatar(m, 96)}<div><h2 style="margin:0">${m.private ? i18n.t('Profilo privato') : esc(fullName(m) || m.nickName || '—')}</h2>${!m.private && fullName(m) && m.nickName ? `<div class="mut">${esc(m.nickName)}</div>` : ''}<small class="mut">${i18n.t('visto')} ${m.seenCount}× · ${i18n.t('dal')} ${fmtDay(m.firstSeen)} · ${i18n.t('ultima volta')} ${fmtDay(m.lastSeen)}</small></div></div>
       ${(m.classes || []).length ? `<p>${i18n.t('Lezioni frequentate')}: ${m.classes.map(esc).join(', ')}</p>` : ''}
       ${r.leaderboard.length ? `<h3>${i18n.t('Classifica MOVEs')}</h3><table>${r.leaderboard.map(l => `<tr><td>${l.trend === 'week' ? i18n.t('settimana') : i18n.t('mese')} ${esc(l.period)}</td><td>#${l.position}</td><td>${l.moves} MOVEs</td></tr>`).join('')}</table>` : ''}
       <h3>${i18n.t('Presenze registrate')} (${r.attendance.length})</h3><table>${r.attendance.map(a => `<tr><td>${fmtD(a.start)}</td><td>${esc(a.name)}</td><td class="mut">${esc(a.room || '')}${a.station ? ' · ' + esc(a.station) : ''}</td></tr>`).join('') || `<tr><td class="mut">—</td></tr>`}</table>
       ${m.extra ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">ⓘ ${i18n.t('Dati tecnici')}</summary><pre style="font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(m.extra, null, 1))}</pre></details>` : ''}
       <p class="row" style="margin-top:12px"><button type="button" class="small" id="pd-close">Chiudi</button></p></div>`;
-    $('#pd-close').onclick = () => dlg.close();
+    $('#pd-close').onclick = () => dlg.close(); bindZoom(dlg);
   } catch (e) { dlg.innerHTML = `<div class="dlg"><p class="msg err">${esc(e.message)}</p><button type="button" class="small" onclick="this.closest('dialog').close()">Chiudi</button></div>`; }
 }
 async function peopleView() {

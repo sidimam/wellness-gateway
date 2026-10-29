@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.9 (2026-10-29)
+- Web UI: members appear as **first and last name** with the **nickname on the line below**; member photos can be **enlarged** (click the photo in the lists or in the member card; click or Esc to close).
+- Faster name backfill for members already in `people.db`: up to 400 per 15-minute round (was 120), timeout 20 s + 0.2 s per member.
+
 ## v0.2.8 (2026-10-29)
 - **Members' first and last name**: the gateway reads them from the member's mywellness **public profile** (`POST services.mywellness.com/Core/User/{id}/PublicProfile`, with the session of a profile of the same club), the same name the Technogym app shows when you tap a participant. Read for every public member of the participant lists it reads, and in blocks of 120 per 15-minute round for members already in `people.db`; refreshed every 7 days.
 - **Privacy**: private profiles never get a name; when a member turns the profile private the name is erased at the next participant read (or name refresh). The public profile also returns weight, age, gender and maximum heart rate: these are **not read or stored**.

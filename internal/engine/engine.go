@@ -1472,7 +1472,7 @@ func (e *Engine) FetchParticipants(ctx context.Context, profileID, classID strin
 	return parts, nil
 }
 
-// backfillNames completa a blocchi (al più 120 soci ogni giro di 15 minuti) i nomi dei soci già nel database,
+// backfillNames completa a blocchi (al più 400 soci ogni giro di 15 minuti) i nomi dei soci già nel database,
 // con la sessione di un profilo dello stesso centro.
 func (e *Engine) backfillNames(ctx context.Context) {
 	byFacility := map[string]string{}
@@ -1484,7 +1484,7 @@ func (e *Engine) backfillNames(ctx context.Context) {
 		}
 	})
 	for fac, pid := range byFacility {
-		ids := e.People.MissingNames(ctx, fac, 120)
+		ids := e.People.MissingNames(ctx, fac, 400)
 		if len(ids) == 0 {
 			continue
 		}
@@ -1545,7 +1545,7 @@ func (e *Engine) collectLeaderboards(ctx context.Context) {
 
 // FillNames legge nome e cognome dal profilo pubblico mywellness dei soci indicati (solo profili pubblici, solo se
 // il nome manca o ha più di people.NameMaxAge) con la sessione di un profilo dello stesso centro: è il dato che
-// l'app Technogym mostra a chiunque tocchi un partecipante. Quattro richieste alla volta, al massimo 20 secondi.
+// l'app Technogym mostra a chiunque tocchi un partecipante. Quattro richieste alla volta (tempo massimo 20 s + 0,2 s per socio).
 func (e *Engine) FillNames(ctx context.Context, profileID string, ids []string) error {
 	if e.People == nil || len(ids) == 0 {
 		return nil
@@ -1558,7 +1558,7 @@ func (e *Engine) FillNames(ctx context.Context, profileID string, ids []string) 
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second+time.Duration(len(ids))*200*time.Millisecond)
 	defer cancel()
 	var (
 		wg     sync.WaitGroup
