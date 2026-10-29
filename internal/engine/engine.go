@@ -1330,6 +1330,7 @@ func (e *Engine) RunPeople(ctx context.Context) {
 	lastLB := time.Time{}
 	for ctx.Err() == nil {
 		e.collectParticipants(ctx)
+		e.backfillNames(ctx)
 		if time.Since(lastLB) > time.Hour {
 			e.collectLeaderboards(ctx)
 			lastLB = time.Now()
@@ -1459,7 +1460,38 @@ func (e *Engine) FetchParticipants(ctx context.Context, profileID, classID strin
 		return parts, err
 	}
 	e.peopleAt[classID+"|"+itoa(partitionDate)] = time.Now()
+	ids := make([]string, 0, len(parts))
+	for _, pt := range parts {
+		if pt.UserID != "" && !pt.Private {
+			ids = append(ids, pt.UserID)
+		}
+	}
+	if err := e.FillNames(ctx, profileID, ids); err != nil {
+		e.logf("warn", profileID, "nomi dei partecipanti non letti (%v)", err)
+	}
 	return parts, nil
+}
+
+// backfillNames completa a blocchi (al più 120 soci ogni giro di 15 minuti) i nomi dei soci già nel database,
+// con la sessione di un profilo dello stesso centro.
+func (e *Engine) backfillNames(ctx context.Context) {
+	byFacility := map[string]string{}
+	e.Store.Read(func(st *model.State) {
+		for _, p := range st.Profiles {
+			if _, ok := byFacility[p.FacilityID]; !ok && p.FacilityID != "" {
+				byFacility[p.FacilityID] = p.ID
+			}
+		}
+	})
+	for fac, pid := range byFacility {
+		ids := e.People.MissingNames(ctx, fac, 120)
+		if len(ids) == 0 {
+			continue
+		}
+		if err := e.FillNames(ctx, pid, ids); err != nil {
+			e.logf("warn", pid, "nomi dei soci non letti (%v)", err)
+		}
+	}
 }
 
 // collectLeaderboards legge la classifica MOVEs (settimana e mese) di ogni centro con la sessione di un profilo.
@@ -1509,4 +1541,60 @@ func (e *Engine) collectLeaderboards(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// FillNames legge nome e cognome dal profilo pubblico mywellness dei soci indicati (solo profili pubblici, solo se
+// il nome manca o ha più di people.NameMaxAge) con la sessione di un profilo dello stesso centro: è il dato che
+// l'app Technogym mostra a chiunque tocchi un partecipante. Quattro richieste alla volta, al massimo 20 secondi.
+func (e *Engine) FillNames(ctx context.Context, profileID string, ids []string) error {
+	if e.People == nil || len(ids) == 0 {
+		return nil
+	}
+	ids = e.People.NeedName(ctx, ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	sess, err := e.ensureSession(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		sem    = make(chan struct{}, 4)
+		first  error
+		logged bool
+	)
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			pn, err := e.MW.PublicProfile(ctx, sess, id)
+			if err == nil {
+				if !pn.Private && pn.FirstName == "" && pn.LastName == "" {
+					mu.Lock()
+					if !logged {
+						logged = true
+						sort.Strings(pn.Keys)
+						e.logf("warn", profileID, "profilo pubblico senza nome: campi %s", strings.Join(pn.Keys, ", "))
+					}
+					mu.Unlock()
+				}
+				err = e.People.SetName(ctx, id, pn.FirstName, pn.LastName, pn.Private)
+			}
+			if err != nil {
+				mu.Lock()
+				if first == nil {
+					first = err
+				}
+				mu.Unlock()
+			}
+		}(id)
+	}
+	wg.Wait()
+	return first
 }

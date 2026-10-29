@@ -1,5 +1,7 @@
 // Package people conserva in SQLite (/config/people.db) i dati PUBBLICI dei soci visti nelle lezioni
-// (nickname, foto, profilo privato, presenze) e le classifiche MOVEs del centro. Nessun dato privato di terzi.
+// (nickname, foto, profilo privato, presenze, nome e cognome dei profili pubblici) e le classifiche MOVEs del centro.
+// Nessun dato privato di terzi: chi ha il profilo privato non ha nome, e dal profilo pubblico non si salvano peso, età,
+// sesso né frequenza cardiaca.
 package people
 
 import (
@@ -34,7 +36,67 @@ func Open(dir string) (*DB, error) {
 			return nil, fmt.Errorf("schema: %w", err)
 		}
 	}
+	// colonne aggiunte dopo la prima versione (ALTER fallisce se esistono già: si ignora)
+	for _, q := range []string{
+		`ALTER TABLE members ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE members ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE members ADD COLUMN name_checked TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			db.Close()
+			return nil, fmt.Errorf("schema: %w", err)
+		}
+	}
 	return &DB{db: db}, nil
+}
+
+// NameMaxAge: dopo quanto si rilegge nome e cognome dal profilo pubblico (cambi di nome o profilo reso privato).
+const NameMaxAge = 7 * 24 * time.Hour
+
+// NeedName filtra gli id dei soci con profilo pubblico il cui nome non è mai stato letto o è più vecchio di NameMaxAge.
+func (d *DB) NeedName(ctx context.Context, ids []string) []string {
+	cut := time.Now().Add(-NameMaxAge).UTC().Format(time.RFC3339)
+	out := []string{}
+	for _, id := range ids {
+		var priv int
+		var checked string
+		if err := d.db.QueryRowContext(ctx, `SELECT private, name_checked FROM members WHERE id=?`, id).Scan(&priv, &checked); err != nil {
+			continue
+		}
+		if priv == 0 && (checked == "" || checked < cut) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// MissingNames: fino a limit soci pubblici del centro senza nome letto (o con lettura più vecchia di NameMaxAge).
+func (d *DB) MissingNames(ctx context.Context, facilityID string, limit int) []string {
+	cut := time.Now().Add(-NameMaxAge).UTC().Format(time.RFC3339)
+	rows, err := d.db.QueryContext(ctx, `SELECT id FROM members WHERE facility_id=? AND private=0 AND (name_checked='' OR name_checked<?)
+		ORDER BY last_seen DESC LIMIT ?`, facilityID, cut, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// SetName salva nome e cognome letti dal profilo pubblico; se il profilo è diventato privato li cancella.
+func (d *DB) SetName(ctx context.Context, id, first, last string, private bool) error {
+	if private {
+		first, last = "", ""
+	}
+	_, err := d.db.ExecContext(ctx, `UPDATE members SET first_name=?, last_name=?, private=CASE WHEN ? THEN 1 ELSE private END, name_checked=? WHERE id=?`,
+		first, last, boolInt(private), time.Now().UTC().Format(time.RFC3339), id)
+	return err
 }
 
 func (d *DB) Close() error { return d.db.Close() }
@@ -102,7 +164,9 @@ func (d *DB) RecordParticipants(ctx context.Context, meta ClassMeta, parts []myw
 			ON CONFLICT(id) DO UPDATE SET facility_id=CASE WHEN excluded.facility_id<>'' THEN excluded.facility_id ELSE members.facility_id END,
 			nick_name=CASE WHEN excluded.nick_name<>'' THEN excluded.nick_name ELSE members.nick_name END,
 			picture_url=CASE WHEN excluded.picture_url<>'' THEN excluded.picture_url ELSE members.picture_url END,
-			private=excluded.private, last_seen=excluded.last_seen, extra=CASE WHEN excluded.extra<>'' THEN excluded.extra ELSE members.extra END`,
+			private=excluded.private, last_seen=excluded.last_seen,
+			first_name=CASE WHEN excluded.private=1 THEN '' ELSE members.first_name END,
+			last_name=CASE WHEN excluded.private=1 THEN '' ELSE members.last_name END, extra=CASE WHEN excluded.extra<>'' THEN excluded.extra ELSE members.extra END`,
 			p.UserID, meta.FacilityID, p.NickName, p.PictureURL, boolInt(p.Private), now, now, extra); err != nil {
 			return err
 		}
@@ -149,6 +213,8 @@ func (d *DB) RecordLeaderboard(ctx context.Context, facilityID, trend, period st
 type MemberView struct {
 	ID         string         `json:"id"`
 	NickName   string         `json:"nickName"`
+	FirstName  string         `json:"firstName,omitempty"` // dal profilo pubblico (vuoto se privato o non ancora letto)
+	LastName   string         `json:"lastName,omitempty"`
 	PictureURL string         `json:"pictureUrl,omitempty"`
 	Private    bool           `json:"private"`
 	FirstSeen  string         `json:"firstSeen"`
@@ -195,7 +261,7 @@ func (d *DB) decorate(ctx context.Context, m *MemberView) {
 func scanMember(sc interface{ Scan(...any) error }, m *MemberView) error {
 	var priv int
 	var extra string
-	if err := sc.Scan(&m.ID, &m.NickName, &m.PictureURL, &priv, &m.FirstSeen, &m.LastSeen, &extra); err != nil {
+	if err := sc.Scan(&m.ID, &m.NickName, &m.FirstName, &m.LastName, &m.PictureURL, &priv, &m.FirstSeen, &m.LastSeen, &extra); err != nil {
 		return err
 	}
 	m.Private = priv == 1
@@ -209,7 +275,7 @@ func scanMember(sc interface{ Scan(...any) error }, m *MemberView) error {
 func (d *DB) ClassParticipants(ctx context.Context, classID string, partitionDate int) ([]MemberView, string, error) {
 	var observed string
 	_ = d.db.QueryRowContext(ctx, `SELECT observed_at FROM classes WHERE class_id=? AND partition_date=?`, classID, partitionDate).Scan(&observed)
-	rows, err := d.db.QueryContext(ctx, `SELECT m.id,m.nick_name,m.picture_url,m.private,m.first_seen,m.last_seen,m.extra,a.joined_on,a.station,a.equipment
+	rows, err := d.db.QueryContext(ctx, `SELECT m.id,m.nick_name,m.first_name,m.last_name,m.picture_url,m.private,m.first_seen,m.last_seen,m.extra,a.joined_on,a.station,a.equipment
 		FROM attendance a JOIN members m ON m.id=a.member_id WHERE a.class_id=? AND a.partition_date=? ORDER BY a.joined_on, m.nick_name`, classID, partitionDate)
 	if err != nil {
 		return nil, observed, err
@@ -220,7 +286,7 @@ func (d *DB) ClassParticipants(ctx context.Context, classID string, partitionDat
 		var m MemberView
 		var priv int
 		var extra string
-		if err := rows.Scan(&m.ID, &m.NickName, &m.PictureURL, &priv, &m.FirstSeen, &m.LastSeen, &extra, &m.JoinedOn, &m.Station, &m.Equipment); err != nil {
+		if err := rows.Scan(&m.ID, &m.NickName, &m.FirstName, &m.LastName, &m.PictureURL, &priv, &m.FirstSeen, &m.LastSeen, &extra, &m.JoinedOn, &m.Station, &m.Equipment); err != nil {
 			return nil, observed, err
 		}
 		m.Private = priv == 1
@@ -238,7 +304,7 @@ func (d *DB) ClassParticipants(ctx context.Context, classID string, partitionDat
 	return out, observed, nil
 }
 
-// Members: i soci visti in un centro, i più frequenti prima (filtro q sul nickname).
+// Members: i soci visti in un centro, i più frequenti prima (filtro q su nickname, nome e cognome).
 func (d *DB) Members(ctx context.Context, facilityIDs []string, q string, limit int) ([]MemberView, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
@@ -252,11 +318,11 @@ func (d *DB) Members(ctx context.Context, facilityIDs []string, q string, limit 
 		}
 	}
 	if q = strings.TrimSpace(q); q != "" {
-		where += " AND m.nick_name LIKE ? COLLATE NOCASE"
-		args = append(args, "%"+q+"%")
+		where += " AND (m.nick_name LIKE ? COLLATE NOCASE OR (m.first_name || ' ' || m.last_name) LIKE ? COLLATE NOCASE OR (m.last_name || ' ' || m.first_name) LIKE ? COLLATE NOCASE)"
+		args = append(args, "%"+q+"%", "%"+q+"%", "%"+q+"%")
 	}
 	args = append(args, limit)
-	rows, err := d.db.QueryContext(ctx, `SELECT m.id,m.nick_name,m.picture_url,m.private,m.first_seen,m.last_seen,m.extra FROM members m
+	rows, err := d.db.QueryContext(ctx, `SELECT m.id,m.nick_name,m.first_name,m.last_name,m.picture_url,m.private,m.first_seen,m.last_seen,m.extra FROM members m
 		WHERE `+where+` ORDER BY (SELECT COUNT(*) FROM attendance a WHERE a.member_id=m.id) DESC, m.last_seen DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -291,7 +357,7 @@ type Attendance struct {
 // Member: scheda di un socio con storico presenze e posizioni in classifica.
 func (d *DB) Member(ctx context.Context, id string) (*MemberView, []Attendance, []LeaderboardRow, error) {
 	var m MemberView
-	if err := scanMember(d.db.QueryRowContext(ctx, `SELECT id,nick_name,picture_url,private,first_seen,last_seen,extra FROM members WHERE id=?`, id), &m); err != nil {
+	if err := scanMember(d.db.QueryRowContext(ctx, `SELECT id,nick_name,first_name,last_name,picture_url,private,first_seen,last_seen,extra FROM members WHERE id=?`, id), &m); err != nil {
 		return nil, nil, nil, err
 	}
 	d.decorate(ctx, &m)

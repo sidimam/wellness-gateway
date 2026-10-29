@@ -23,7 +23,7 @@
 - **Watching cadence**: `pollSeconds` (default 15, minimum 5) between public schedule reads; `nearPollSeconds` (default 3, minimum 2) in the last `nearHours` hours (default 4); ±15% jitter. Reads are anonymous (no token), so the cadence does not expose the account; one authenticated read per class every 60 s keeps participation and waiting-list position up to date.
 
 ## People database
-- `people.db` (SQLite) in the data dir, created automatically; tables `members`, `classes`, `attendance`, `leaderboard`. Back it up with the data dir. Delete it to forget everything: it is rebuilt from the next reads.
+- `people.db` (SQLite) in the data dir, created automatically; tables `members` (nickname, picture, private flag, first/last name of public profiles), `classes`, `attendance`, `leaderboard`. Back it up with the data dir. Delete it to forget everything: it is rebuilt from the next reads.
 
 ## Per-profile
 - A profile is one mywellness account **at one club**. The same account can be linked to several clubs: add them from the user dialog (web) or the profile page (iOS); each club keeps its own schedule, tracked classes and limits.

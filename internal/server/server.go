@@ -19,6 +19,7 @@ import (
 	"github.com/sidimam/wellness-gateway/internal/engine"
 	"github.com/sidimam/wellness-gateway/internal/model"
 	"github.com/sidimam/wellness-gateway/internal/mywellness"
+	"github.com/sidimam/wellness-gateway/internal/people"
 	"github.com/sidimam/wellness-gateway/internal/store"
 )
 
@@ -1434,6 +1435,30 @@ func (s *Server) facilitiesOf(p principal) []string {
 	return out
 }
 
+// nameProfile: un profilo visibile al chiamante con cui leggere i profili pubblici dei soci.
+func (s *Server) nameProfile(p principal) string {
+	out := ""
+	s.Store.Read(func(st *model.State) {
+		for _, pr := range st.Profiles {
+			if out == "" && pr.FacilityID != "" && (p.user.IsAdmin || engine.Visible(pr, p.user.ID, p.seesAll())) {
+				out = pr.ID
+			}
+		}
+	})
+	return out
+}
+
+// namelessIDs: i soci pubblici ancora senza nome (FillNames salta da solo quelli letti da poco).
+func namelessIDs(ms []people.MemberView) []string {
+	out := []string{}
+	for _, m := range ms {
+		if !m.Private && m.FirstName == "" && m.LastName == "" {
+			out = append(out, m.ID)
+		}
+	}
+	return out
+}
+
 func (s *Server) peopleReady(w http.ResponseWriter) bool {
 	if s.Engine.People == nil {
 		writeErr(w, 503, "database soci non attivo")
@@ -1469,6 +1494,11 @@ func (s *Server) classParticipants(w http.ResponseWriter, r *http.Request, p pri
 		writeErr(w, 500, err.Error())
 		return
 	}
+	if missing := namelessIDs(members); len(missing) > 0 {
+		if s.Engine.FillNames(r.Context(), id, missing) == nil {
+			members, observed, _ = s.Engine.People.ClassParticipants(r.Context(), classID, date)
+		}
+	}
 	writeJSON(w, 200, map[string]any{"participants": members, "observedAt": observed, "liveError": liveErr})
 }
 
@@ -1501,6 +1531,13 @@ func (s *Server) peopleMember(w http.ResponseWriter, r *http.Request, p principa
 	if err != nil {
 		writeErr(w, 404, "socio non trovato")
 		return
+	}
+	if pid := s.nameProfile(p); pid != "" && len(namelessIDs([]people.MemberView{*m})) > 0 {
+		if s.Engine.FillNames(r.Context(), pid, []string{m.ID}) == nil {
+			if m2, att2, lb2, err := s.Engine.People.Member(r.Context(), m.ID); err == nil {
+				m, att, lb = m2, att2, lb2
+			}
+		}
 	}
 	writeJSON(w, 200, map[string]any{"member": m, "attendance": att, "leaderboard": lb})
 }

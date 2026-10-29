@@ -56,3 +56,36 @@ func TestHasPlace(t *testing.T) {
 		}
 	}
 }
+
+// Dal profilo pubblico si prendono solo nome e cognome; con profilo privato niente nome.
+func TestPublicProfileName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer tok" {
+			http.Error(w, "no", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/Core/User/priv/PublicProfile" {
+			_, _ = w.Write([]byte(`{"data":{"userId":"priv","firstName":"X","lastName":"Y","hasPrivateProfile":true}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"userId":"u1","nickName":"dani","firstName":" Daniela ","lastName":"Manieri","weight":70,"age":50,"fcMax":170,"hasPrivateProfile":false}}`))
+	}))
+	defer srv.Close()
+	old := svcURL
+	svcURL = srv.URL
+	defer func() { svcURL = old }()
+
+	c, sess := New(), &Session{Token: "tok"}
+	pn, err := c.PublicProfile(context.Background(), sess, "u1")
+	if err != nil || pn.FirstName != "Daniela" || pn.LastName != "Manieri" || pn.Private {
+		t.Fatalf("pubblico: %+v %v", pn, err)
+	}
+	pn, err = c.PublicProfile(context.Background(), sess, "priv")
+	if err != nil || pn.FirstName != "" || pn.LastName != "" || !pn.Private {
+		t.Fatalf("privato: %+v %v", pn, err)
+	}
+	if _, err := c.PublicProfile(context.Background(), nil, "u1"); err != ErrUnauthorized {
+		t.Fatalf("senza sessione: %v", err)
+	}
+}

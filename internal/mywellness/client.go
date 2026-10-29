@@ -668,3 +668,49 @@ func (c *Client) Leaderboard(ctx context.Context, sess *Session, facilityID, tre
 	}
 	return out.Leaderboard, nil
 }
+
+// PublicName è il nome di un socio come lo mostra il suo profilo pubblico mywellness (quello che vede
+// chiunque tocchi il socio nell'app Technogym). Il profilo pubblico contiene anche peso, età, sesso e
+// frequenza cardiaca massima: sono dati sanitari di terzi e qui non vengono nemmeno letti.
+type PublicName struct {
+	FirstName string
+	LastName  string
+	Private   bool
+	Keys      []string // chiavi presenti nella risposta (solo i nomi, per la diagnosi se mancano i campi)
+}
+
+// PublicProfile legge nome e cognome dal profilo pubblico di un socio (servono la sessione e un profilo pubblico).
+func (c *Client) PublicProfile(ctx context.Context, sess *Session, userID string) (PublicName, error) {
+	if sess == nil || sess.Token == "" {
+		return PublicName{}, ErrUnauthorized
+	}
+	data, resp, err := c.do(ctx, http.MethodPost, svcURL, "/Core/User/"+url.PathEscape(userID)+"/PublicProfile", nil, map[string]any{}, sess)
+	if err != nil {
+		return PublicName{}, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return PublicName{}, ErrUnauthorized
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return PublicName{}, &APIError{Status: resp.StatusCode, Message: "errore profilo pubblico"}
+	}
+	var out struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil || out.Data == nil {
+		if errs := errorsIn(data); len(errs) > 0 {
+			return PublicName{}, &APIError{Status: resp.StatusCode, Message: joinErrs(errs)}
+		}
+		return PublicName{}, &APIError{Status: resp.StatusCode, Message: "formato profilo pubblico non riconosciuto"}
+	}
+	pn := PublicName{}
+	pn.Private, _ = out.Data["hasPrivateProfile"].(bool)
+	if !pn.Private {
+		pn.FirstName = strings.TrimSpace(firstStr(out.Data, "firstName", "name"))
+		pn.LastName = strings.TrimSpace(firstStr(out.Data, "lastName", "surname"))
+	}
+	for k := range out.Data {
+		pn.Keys = append(pn.Keys, k)
+	}
+	return pn, nil
+}

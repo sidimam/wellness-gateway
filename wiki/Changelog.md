@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.8 (2026-10-29)
+- **Members' first and last name**: the gateway reads them from the member's mywellness **public profile** (`POST services.mywellness.com/Core/User/{id}/PublicProfile`, with the session of a profile of the same club), the same name the Technogym app shows when you tap a participant. Read for every public member of the participant lists it reads, and in blocks of 120 per 15-minute round for members already in `people.db`; refreshed every 7 days.
+- **Privacy**: private profiles never get a name; when a member turns the profile private the name is erased at the next participant read (or name refresh). The public profile also returns weight, age, gender and maximum heart rate: these are **not read or stored**.
+- `people.db`: `members` gains `first_name`, `last_name`, `name_checked` (added automatically). API: `firstName`/`lastName` in member objects; `GET /people/members?q=` also searches first and last name.
+- Web UI and iOS app (build 23): name and surname in participant lists, classmates and member card (nickname below); search by name.
+
 ## v0.2.7 (2026-10-29)
 - **Past classes hidden**: `GET /items` returns only classes that have not ended yet (`?past=1` for the history). Past items stay in the state because recurrences start from the oldest recurring item.
 - **Fix (duplicates after the club regenerates its calendar)**: the same class and time can get a new identifier on mywellness; the tracked item stayed on the old one (e.g. "Lezione non più in calendario", watched for nothing) while the recurrence attached a second item for the new one. Now a future item whose class disappeared is moved to the class with the same name and start time, or dropped if an item for it already exists; recurrences never attach a class whose name and time are already tracked.

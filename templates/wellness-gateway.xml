@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-29 (v0.2.7)
+  <Changes>### 2026-10-29 (v0.2.8)
+- Members' first and last name from their public mywellness profile (private profiles stay anonymous; no weight/age/heart-rate data).
+
+### 2026-10-29 (v0.2.7)
 - Past classes hidden from the lists; fixed duplicates when the club regenerates class identifiers.
 
 ### 2026-10-29 (v0.2.6)
