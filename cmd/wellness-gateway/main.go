@@ -18,6 +18,7 @@ import (
 	"github.com/sidimam/wellness-gateway/internal/people"
 	"github.com/sidimam/wellness-gateway/internal/server"
 	"github.com/sidimam/wellness-gateway/internal/store"
+	"github.com/sidimam/wellness-gateway/internal/telegram"
 )
 
 func env(k, def string) string {
@@ -59,6 +60,14 @@ func main() {
 	}
 
 	eng := engine.New(st, push)
+	eng.Version = server.Version
+	eng.Telegram = telegram.New(env("TELEGRAM_TOKEN", ""), env("TELEGRAM_CHAT_ID", ""))
+	eng.SummaryHour, _ = strconv.Atoi(env("TELEGRAM_SUMMARY_HOUR", "21"))
+	if eng.Telegram != nil {
+		log.Printf("Telegram attivo: avvisi di prenotazione e riepilogo alle %d:00", eng.SummaryHour)
+	} else {
+		log.Printf("Telegram non configurato (TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)")
+	}
 	if pdb, err := people.Open(dataDir); err != nil {
 		log.Printf("database soci non disponibile: %v", err)
 	} else {
@@ -71,6 +80,7 @@ func main() {
 	defer stop()
 	go eng.Run(ctx)
 	go eng.RunPeople(ctx)
+	go eng.RunTelegramSummary(ctx)
 
 	hs := &http.Server{Addr: listen, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {

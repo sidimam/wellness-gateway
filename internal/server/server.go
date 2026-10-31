@@ -132,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/people/members/{id}", auth(s.peopleMember))
 	mux.HandleFunc("GET /api/v1/people/leaderboard", auth(s.peopleLeaderboard))
 	mux.HandleFunc("GET /api/v1/people/stats", auth(s.peopleStats))
+	mux.HandleFunc("POST /api/v1/telegram/test", auth(s.telegramTest))
 	mux.HandleFunc("GET /api/v1/profiles/{id}/bookings", auth(s.bookings))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/unbook", auth(s.unbook))
 	mux.HandleFunc("POST /api/v1/profiles/{id}/leave-waiting-list", auth(s.leaveWaitingList))
@@ -284,7 +285,7 @@ func publicUser(u model.User) map[string]any {
 func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 	n := 0
 	s.Store.Read(func(st *model.State) { n = len(st.Users) })
-	writeJSON(w, 200, map[string]any{"needsSetup": n == 0, "version": Version, "push": s.PushOn, "publicUrl": s.PublicURL})
+	writeJSON(w, 200, map[string]any{"needsSetup": n == 0, "version": Version, "push": s.PushOn, "publicUrl": s.PublicURL, "telegram": s.Engine.Telegram != nil})
 }
 
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
@@ -491,7 +492,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request, p principal) {
 		}
 	})
 	writeJSON(w, 200, map[string]any{"version": Version, "startedAt": s.Engine.Started, "nextWake": s.Engine.NextWake,
-		"profiles": profiles, "items": items, "activeItems": active, "push": s.PushOn, "publicUrl": s.PublicURL})
+		"profiles": profiles, "items": items, "activeItems": active, "push": s.PushOn, "publicUrl": s.PublicURL, "telegram": s.Engine.Telegram != nil})
 }
 
 // ---- profili
@@ -1019,7 +1020,9 @@ func (s *Server) leaveWaitingList(w http.ResponseWriter, r *http.Request, p prin
 func (s *Server) listItems(w http.ResponseWriter, r *http.Request, p principal) {
 	pid := r.URL.Query().Get("profile")
 	past := r.URL.Query().Get("past") == "1" // lo storico resta nello stato (serve alle ricorrenze) ma non si mostra
-	now := time.Now()
+	// le lezioni di oggi restano visibili fino a mezzanotte, anche se già concluse
+	n := time.Now().In(mywellness.Rome)
+	midnight := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, mywellness.Rome)
 	out := []model.Item{}
 	s.Store.Read(func(st *model.State) {
 		vis := map[string]bool{}
@@ -1027,7 +1030,7 @@ func (s *Server) listItems(w http.ResponseWriter, r *http.Request, p principal) 
 			vis[pr.ID] = engine.Visible(pr, p.user.ID, p.seesAll())
 		}
 		for _, it := range st.Items {
-			if !past && it.End.Before(now) {
+			if !past && it.Start.Before(midnight) {
 				continue
 			}
 			if vis[it.ProfileID] && (pid == "" || it.ProfileID == pid) {
@@ -1582,4 +1585,21 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// telegramTest (amministratore): manda subito il riepilogo sul bot Telegram, per provare la configurazione.
+func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request, p principal) {
+	if !p.user.IsAdmin {
+		writeErr(w, 403, "solo amministratore")
+		return
+	}
+	if s.Engine.Telegram == nil {
+		writeErr(w, 400, "Telegram non configurato (TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)")
+		return
+	}
+	if err := s.Engine.Telegram.SendNow(r.Context(), s.Engine.Summary()); err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
 }

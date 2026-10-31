@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-29 (v0.2.9)
+  <Changes>### 2026-10-31 (v0.2.10)
+- Two first attempts per rule (Reformer 05:01 and 07:01), Telegram notices with the user's name + daily summary, today's classes visible until midnight, participants and member↔class navigation.
+
+### 2026-10-29 (v0.2.9)
 - Name and surname above the nickname, enlargeable member photos, faster name backfill.
 
 ### 2026-10-29 (v0.2.8)
@@ -124,6 +127,9 @@
   <Config Name="APNs team id" Target="APNS_TEAM_ID" Default="X5SR67A8AL" Mode="" Description="Apple Developer team id." Type="Variable" Display="advanced" Required="false" Mask="false">X5SR67A8AL</Config>
   <Config Name="APNs bundle id" Target="APNS_BUNDLE_ID" Default="com.sdimambro.wellness-booking" Mode="" Description="Bundle id of the iOS app (APNs topic)." Type="Variable" Display="advanced" Required="false" Mask="false">com.sdimambro.wellness-booking</Config>
   <Config Name="APNs production" Target="APNS_PRODUCTION" Default="true" Mode="" Description="true for TestFlight/App Store builds, false for Xcode debug builds." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Telegram bot token" Target="TELEGRAM_TOKEN" Default="" Mode="" Description="Bot token (BotFather) for booking notices and the daily summary. Empty = Telegram off." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Telegram chat id" Target="TELEGRAM_CHAT_ID" Default="" Mode="" Description="Chat (or group) that receives the notices." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Telegram summary hour" Target="TELEGRAM_SUMMARY_HOUR" Default="21" Mode="" Description="Hour (Europe/Rome) of the daily summary, -1 = none." Type="Variable" Display="advanced" Required="false" Mask="false">21</Config>
   <Config Name="Secret key (optional)" Target="WG_SECRET_KEY" Default="" Mode="" Description="Passphrase used to encrypt mywellness passwords. If empty a random key is generated in /config/secret.key." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="Timezone" Target="TZ" Default="Europe/Rome" Mode="" Description="Timezone for logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Rome</Config>
 </Container>

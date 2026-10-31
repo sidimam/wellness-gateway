@@ -1,7 +1,10 @@
 // Package model contiene i tipi condivisi tra store, engine e API.
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // User è un utente locale del gateway (chi usa l'app iOS o la web UI).
 type User struct {
@@ -63,6 +66,16 @@ type OpenRule struct {
 	MaxBookings int    `json:"maxBookings"`          // 0 = nessun limite specifico per questa regola
 	MaxPerWeek  int    `json:"maxPerWeek,omitempty"` // prenotazioni massime per settimana (lun-dom della lezione); 0 = nessun limite
 	ValidFrom   string `json:"validFrom,omitempty"`  // YYYY-MM-DD: la regola vale per le aperture da questo giorno in poi (vuoto = sempre)
+	AlsoAt      string `json:"alsoAt,omitempty"`     // HH:MM: secondo primo tentativo nello stesso giorno di apertura (es. 07:01), vuoto = nessuno
+}
+
+// AlsoHM restituisce ora e minuti di AlsoAt (ok=false se vuoto o non valido).
+func (r OpenRule) AlsoHM() (int, int, bool) {
+	t, err := time.Parse("15:04", strings.TrimSpace(r.AlsoAt))
+	if err != nil {
+		return 0, 0, false
+	}
+	return t.Hour(), t.Minute(), true
 }
 
 // appliesOn: la regola vale per un'apertura nel giorno day (YYYY-MM-DD).
@@ -177,28 +190,30 @@ func (s WatchState) Terminal() bool {
 
 // Item è una lezione che il gateway deve prenotare per un profilo.
 type Item struct {
-	ID            string     `json:"id"` // profileID|classID|partitionDate
-	ProfileID     string     `json:"profileId"`
-	ClassID       string     `json:"classId"`
-	PartitionDate int        `json:"partitionDate"`
-	Name          string     `json:"name"`
-	Start         time.Time  `json:"start"`
-	End           time.Time  `json:"end"`
-	Room          string     `json:"room,omitempty"`
-	Trainer       string     `json:"trainer,omitempty"`
-	PictureURL    string     `json:"pictureUrl,omitempty"`
-	ServerOpensOn *time.Time `json:"serverOpensOn,omitempty"`
-	FireAt        *time.Time `json:"fireAt,omitempty"`
-	Recurring     bool       `json:"recurring"`
-	State         WatchState `json:"state"`
-	LastMessage   string     `json:"lastMessage"`
-	LastCheck     *time.Time `json:"lastCheck,omitempty"`
-	Attempts      int        `json:"attempts"`
-	BookedAt      *time.Time `json:"bookedAt,omitempty"`
-	Available     *int       `json:"availablePlaces,omitempty"`
-	MaxPlaces     *int       `json:"maxParticipants,omitempty"`
-	CreatedBy     string     `json:"createdBy"`
-	CreatedAt     time.Time  `json:"createdAt"`
+	ID            string      `json:"id"` // profileID|classID|partitionDate
+	ProfileID     string      `json:"profileId"`
+	ClassID       string      `json:"classId"`
+	PartitionDate int         `json:"partitionDate"`
+	Name          string      `json:"name"`
+	Start         time.Time   `json:"start"`
+	End           time.Time   `json:"end"`
+	Room          string      `json:"room,omitempty"`
+	Trainer       string      `json:"trainer,omitempty"`
+	PictureURL    string      `json:"pictureUrl,omitempty"`
+	ServerOpensOn *time.Time  `json:"serverOpensOn,omitempty"`
+	FireAt        *time.Time  `json:"fireAt,omitempty"`    // primo tentativo
+	FireTimes     []time.Time `json:"fireTimes,omitempty"` // tutti i tentativi di apertura (orario della regola, secondo orario, apertura comunicata dal centro)
+	Round         int         `json:"round,omitempty"`     // indice in FireTimes del tentativo di apertura in corso o già fatto
+	Recurring     bool        `json:"recurring"`
+	State         WatchState  `json:"state"`
+	LastMessage   string      `json:"lastMessage"`
+	LastCheck     *time.Time  `json:"lastCheck,omitempty"`
+	Attempts      int         `json:"attempts"`
+	BookedAt      *time.Time  `json:"bookedAt,omitempty"`
+	Available     *int        `json:"availablePlaces,omitempty"`
+	MaxPlaces     *int        `json:"maxParticipants,omitempty"`
+	CreatedBy     string      `json:"createdBy"`
+	CreatedAt     time.Time   `json:"createdAt"`
 }
 
 // RuleKey identifica la ricorrenza settimanale (nome|giorno|ora).

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -42,20 +43,57 @@ func TestFireAtValidFrom(t *testing.T) {
 			t.Errorf("%s %s: fireAt %s, atteso %s", c.name, c.start, got.In(mywellness.Rome).Format("2006-01-02 15:04"), c.want)
 		}
 	}
-	// con "segui l'orario del centro" il giorno viene da mywellness, l'ora dalla regola valida in quel giorno,
-	// ma mai prima dell'apertura comunicata (se il centro apre più tardi, un minuto dopo l'apertura)
-	follow := []struct{ start, opens, want string }{
-		{"2026-11-04 17:30", "2026-11-01 07:00", "2026-11-01 07:01"}, // regola nuova 07:01
-		{"2026-11-03 17:30", "2026-10-31 07:00", "2026-10-31 07:01"}, // regola 05:01 ma il centro apre alle 7
-		{"2026-11-03 17:30", "2026-10-31 05:00", "2026-10-31 05:01"}, // il centro apre alle 5: vale la regola
-		{"2026-11-06 17:30", "2026-11-03 05:00", "2026-11-03 07:01"}, // il centro dice 5 ma dal 1/11 la regola dice 7:01
+	// con "segui l'orario del centro" il giorno viene da mywellness e l'apertura comunicata diventa un tentativo
+	// IN PIÙ (non sostituisce l'orario della regola: il 31/10 il centro diceva 07:00 ma si prenotava alle 05:00)
+	follow := []struct {
+		start, opens string
+		want         []string
+	}{
+		{"2026-11-04 17:30", "2026-11-01 07:00", []string{"2026-11-01 07:01"}},
+		{"2026-11-03 17:30", "2026-10-31 07:00", []string{"2026-10-31 05:01", "2026-10-31 07:01"}},
+		{"2026-11-03 17:30", "2026-10-31 05:00", []string{"2026-10-31 05:01"}},
+		{"2026-11-06 17:30", "2026-11-03 05:00", []string{"2026-11-03 05:01", "2026-11-03 07:01"}},
 	}
 	for _, c := range follow {
 		opens := at(c.opens)
 		it := model.Item{Name: "Group Reformer", Start: at(c.start), ServerOpensOn: &opens}
-		if got := fireAt(it, wellnessTown(true)); !got.Equal(at(c.want)) {
-			t.Errorf("follow %s apre %s: fireAt %s, atteso %s", c.start, c.opens, got.In(mywellness.Rome).Format("2006-01-02 15:04"), c.want)
-		}
+		checkTimes(t, "follow "+c.start, fireTimes(it, wellnessTown(true)), c.want)
+	}
+}
+
+func checkTimes(t *testing.T, label string, got []time.Time, want []string) {
+	t.Helper()
+	g := []string{}
+	for _, x := range got {
+		g = append(g, x.In(mywellness.Rome).Format("2006-01-02 15:04"))
+	}
+	if strings.Join(g, ",") != strings.Join(want, ",") {
+		t.Errorf("%s: tentativi %v, attesi %v", label, g, want)
+	}
+}
+
+// Due orari di primo tentativo nella stessa regola (05:01 e 07:01) e passaggio al secondo dopo la raffica.
+func TestFireTimesAlsoAt(t *testing.T) {
+	s := model.Settings{BurstSeconds: 30, OpenRules: []model.OpenRule{
+		{ID: "r", Pattern: "Reformer", DaysBefore: 3, Hour: 5, Minute: 1, AlsoAt: "07:01", MaxBookings: 3, MaxPerWeek: 2},
+		{ID: "default", Pattern: "*", DaysBefore: 7, Hour: 5, Minute: 1},
+	}}
+	it := model.Item{Name: "Group Reformer", Start: at("2026-11-05 17:30")}
+	checkTimes(t, "reformer", fireTimes(it, s), []string{"2026-11-02 05:01", "2026-11-02 07:01"})
+	checkTimes(t, "altre", fireTimes(model.Item{Name: "PILATES", Start: at("2026-11-09 18:00")}, s), []string{"2026-11-02 05:01"})
+	// dopo la raffica delle 05:01 (round 0) il prossimo è alle 07:01
+	if next, round, ok := nextRound(it, s, at("2026-11-02 05:10")); !ok || round != 1 || !next.Equal(at("2026-11-02 07:01")) {
+		t.Errorf("nextRound 05:10: %v %d %v", next, round, ok)
+	}
+	// fatto anche il secondo: niente altri tentativi
+	it.Round = 1
+	if _, _, ok := nextRound(it, s, at("2026-11-02 07:10")); ok {
+		t.Error("nessun terzo tentativo atteso")
+	}
+	// a gateway spento il secondo orario è passato da ore: non si recupera
+	it.Round = 0
+	if _, _, ok := nextRound(it, s, at("2026-11-02 12:00")); ok {
+		t.Error("tentativo scaduto non va recuperato")
 	}
 }
 

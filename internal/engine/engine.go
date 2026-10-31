@@ -17,6 +17,7 @@ import (
 	"github.com/sidimam/wellness-gateway/internal/mywellness"
 	"github.com/sidimam/wellness-gateway/internal/people"
 	"github.com/sidimam/wellness-gateway/internal/store"
+	"github.com/sidimam/wellness-gateway/internal/telegram"
 )
 
 // Engine coordina profili, calendario e prenotazioni.
@@ -25,6 +26,12 @@ type Engine struct {
 	MW     *mywellness.Client
 	Push   *apns.Client // può essere nil
 	People *people.DB   // soci e classifiche (può essere nil)
+	// Telegram: avvisi sul bot di casa (prenotazioni, liste d'attesa, errori) e riepilogo serale. Può essere nil.
+	Telegram *telegram.Bot
+	// SummaryHour: ora del riepilogo serale su Telegram (ora di Roma, -1 = mai).
+	SummaryHour int
+	// Version: versione del gateway mostrata nel riepilogo.
+	Version string
 
 	mu           sync.Mutex
 	calendars    map[string]calendar  // per profilo: calendario autenticato (daysAhead)
@@ -79,6 +86,32 @@ func (e *Engine) logf(level, profileID, format string, args ...any) {
 	text := fmt.Sprintf(format, args...)
 	log.Printf("[%s] %s", level, text)
 	e.Store.AddLog(level, profileID, text)
+	e.telegramEvent(level, profileID, text)
+}
+
+// telegramEvent inoltra su Telegram gli eventi che contano, col nome dell'utente del profilo.
+func (e *Engine) telegramEvent(level, profileID, text string) {
+	if e.Telegram == nil {
+		return
+	}
+	notable := level == "error"
+	for _, k := range []string{"✅", "🔔", "scaduta:", "disdetta rilevata", "in lista d'attesa", "limite settimanale", "secondo tentativo"} {
+		if strings.Contains(text, k) {
+			notable = true
+		}
+	}
+	if !notable {
+		return
+	}
+	who := "Gateway"
+	if p, ok := e.profile(profileID); ok {
+		who = p.Label
+	}
+	icon := map[string]string{"error": "⚠️ ", "warn": "ℹ️ "}[level]
+	if strings.HasPrefix(text, "scaduta:") {
+		icon, text = "❌ ", "non prenotata, prenotazioni chiuse —"+strings.TrimPrefix(text, "scaduta:")
+	}
+	e.Telegram.Send(fmt.Sprintf("%s%s · %s", icon, who, text), 6*time.Hour)
 }
 
 // Run esegue il loop finché il contesto non è annullato.
@@ -105,23 +138,17 @@ func (e *Engine) Run(ctx context.Context) {
 			switch it.State {
 			case model.StatePending:
 				fire := fireAt(it, s)
-				if fire == nil {
-					e.setItem(it.ID, func(x *model.Item) { x.LastMessage = "Orario di apertura sconosciuto" })
-					continue
-				}
 				target := fire.Add(-time.Duration(s.LeadMilliseconds) * time.Millisecond)
 				if !now.Before(target) {
-					e.setItem(it.ID, func(x *model.Item) { x.State = model.StateBursting })
+					e.setItem(it.ID, func(x *model.Item) { x.State = model.StateBursting; x.Round = 0 })
 					e.attempt(ctx, it.ID, "apertura prenotazioni")
 					wake = minT(wake, time.Now().Add(1500*time.Millisecond))
 				} else {
 					wake = minT(wake, target)
 				}
 			case model.StateBursting:
-				fire := fireAt(it, s)
-				if fire == nil {
-					fire = &now
-				}
+				ts := fireTimes(it, s)
+				fire := ts[min(it.Round, len(ts)-1)]
 				if !now.After(fire.Add(time.Duration(s.BurstSeconds) * time.Second)) {
 					e.attempt(ctx, it.ID, "ritentativo")
 					wake = minT(wake, time.Now().Add(1500*time.Millisecond))
@@ -133,6 +160,19 @@ func (e *Engine) Run(ctx context.Context) {
 					e.logf("info", it.ProfileID, "%s %s: osservazione attiva", it.Name, fmtTime(it.Start))
 				}
 			case model.StateWatching, model.StateWaitingList:
+				// secondo (o terzo) tentativo di apertura: es. 07:01 dopo quello delle 05:01
+				if it.State == model.StateWatching {
+					if next, round, ok := nextRound(it, s, now); ok {
+						if !now.Before(next.Add(-time.Duration(s.LeadMilliseconds) * time.Millisecond)) {
+							e.setItem(it.ID, func(x *model.Item) { x.State = model.StateBursting; x.Round = round })
+							e.logf("info", it.ProfileID, "%s %s: secondo tentativo di apertura (%s)", it.Name, fmtTime(it.Start), next.In(mywellness.Rome).Format("15:04"))
+							e.attempt(ctx, it.ID, "secondo orario di apertura")
+							wake = minT(wake, time.Now().Add(1500*time.Millisecond))
+							continue
+						}
+						wake = minT(wake, next.Add(-time.Duration(s.LeadMilliseconds)*time.Millisecond))
+					}
+				}
 				due, ok := e.nextPoll[it.ID]
 				if !ok || !now.Before(due) {
 					e.watch(ctx, it.ID)
@@ -161,6 +201,18 @@ func (e *Engine) Run(ctx context.Context) {
 	e.logf("warn", "", "motore fermato")
 }
 
+// nextRound: il prossimo tentativo di apertura dopo quello già fatto (it.Round), se non è già passato da più
+// della finestra di raffica (i tentativi persi, ad esempio a gateway spento, non si recuperano a vuoto).
+func nextRound(it model.Item, s model.Settings, now time.Time) (time.Time, int, bool) {
+	ts := fireTimes(it, s)
+	for i := it.Round + 1; i < len(ts); i++ {
+		if now.Before(ts[i].Add(time.Duration(s.BurstSeconds) * time.Second)) {
+			return ts[i], i, true
+		}
+	}
+	return time.Time{}, 0, false
+}
+
 func minT(a, b time.Time) time.Time {
 	if b.Before(a) {
 		return b
@@ -170,10 +222,12 @@ func minT(a, b time.Time) time.Time {
 
 func fmtTime(t time.Time) string { return t.In(mywellness.Rome).Format("Mon 2 Jan 15:04") }
 
-// fireAt calcola quando tentare la prenotazione. L'ORA viene sempre dalla regola che corrisponde
-// (specifica, altrimenti *). Il GIORNO viene dall'apertura comunicata dal centro se "segui il centro" è
-// attivo e il centro la comunica, altrimenti da "giorni prima" della regola.
-func fireAt(it model.Item, s model.Settings) *time.Time {
+// fireTimes calcola i tentativi di apertura, in ordine. Il GIORNO viene dall'apertura comunicata dal centro se
+// "segui il centro" è attivo e il centro la comunica, altrimenti da "giorni prima" della regola; l'ORA dalla regola
+// valida in quel giorno, più il secondo orario della regola (AlsoAt) e, se il centro comunica un'apertura diversa,
+// un minuto dopo quell'apertura. Esempio Reformer: il centro dichiara le 07:00 ma il 31/10 si prenotava già alle
+// 05:00 → tentativi alle 05:01 e alle 07:01.
+func fireTimes(it model.Item, s model.Settings) []time.Time {
 	st := it.Start.In(mywellness.Rome)
 	r := s.RuleOn(it.Name, st.Format("2006-01-02")) // solo per i "giorni prima"
 	var day time.Time
@@ -182,14 +236,27 @@ func fireAt(it model.Item, s model.Settings) *time.Time {
 	} else {
 		day = time.Date(st.Year(), st.Month(), st.Day()-r.DaysBefore, 0, 0, 0, 0, mywellness.Rome)
 	}
-	// l'ora (e il resto) viene dalla regola valida nel giorno di APERTURA: dal 1/11 la Reformer apre alle 7
 	r = s.RuleOn(it.Name, day.Format("2006-01-02"))
-	t := time.Date(day.Year(), day.Month(), day.Day(), r.Hour, r.Minute, 0, 0, mywellness.Rome)
-	// Mai prima dell'apertura comunicata dal centro: se mywellness dice che apre più tardi dell'orario
-	// della regola (es. regola 05:01 ma il centro apre alle 07:00), si prova un minuto dopo l'apertura.
-	if s.FollowServerOpenTime && it.ServerOpensOn != nil && it.ServerOpensOn.After(t) {
-		t = it.ServerOpensOn.In(mywellness.Rome).Add(time.Minute)
+	ts := []time.Time{time.Date(day.Year(), day.Month(), day.Day(), r.Hour, r.Minute, 0, 0, mywellness.Rome)}
+	if h, m, ok := r.AlsoHM(); ok {
+		ts = append(ts, time.Date(day.Year(), day.Month(), day.Day(), h, m, 0, 0, mywellness.Rome))
 	}
+	if s.FollowServerOpenTime && it.ServerOpensOn != nil {
+		ts = append(ts, it.ServerOpensOn.In(mywellness.Rome).Add(time.Minute))
+	}
+	sort.Slice(ts, func(i, j int) bool { return ts[i].Before(ts[j]) })
+	out := ts[:1]
+	for _, t := range ts[1:] {
+		if t.Sub(out[len(out)-1]) >= time.Minute {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// fireAt: il primo tentativo di apertura (vedi fireTimes).
+func fireAt(it model.Item, s model.Settings) *time.Time {
+	t := fireTimes(it, s)[0]
 	return &t
 }
 
@@ -275,6 +342,7 @@ func (e *Engine) setItem(id string, fn func(*model.Item)) {
 			if st.Items[i].ID == id {
 				fn(&st.Items[i])
 				st.Items[i].FireAt = fireAt(st.Items[i], st.SettingsForProfile(st.Items[i].ProfileID))
+				st.Items[i].FireTimes = fireTimes(st.Items[i], st.SettingsForProfile(st.Items[i].ProfileID))
 			}
 		}
 		return nil
@@ -545,6 +613,7 @@ func (e *Engine) syncItems(profileID string, events []mywellness.ClassEvent) {
 				it.ServerOpensOn = o
 			}
 			it.FireAt = fireAt(*it, st.SettingsForProfile(profileID))
+			it.FireTimes = fireTimes(*it, st.SettingsForProfile(profileID))
 			switch {
 			case ev.IsParticipant && it.State != model.StateBooked:
 				it.State = model.StateBooked
@@ -635,6 +704,7 @@ func (e *Engine) attachRecurring(profileID string, events []mywellness.ClassEven
 					probe.LastMessage = "Già prenotata"
 				}
 				probe.FireAt = fireAt(probe, st.SettingsForProfile(profileID))
+				probe.FireTimes = fireTimes(probe, st.SettingsForProfile(profileID))
 				st.Items = append(st.Items, probe)
 				known[probe.ID] = true
 				added = append(added, probe)
@@ -702,6 +772,7 @@ func (e *Engine) AddItem(ctx context.Context, profileID, classID string, partiti
 			it.State = model.StateWaitingList
 		}
 		it.FireAt = fireAt(it, st.SettingsForProfile(profileID))
+		it.FireTimes = fireTimes(it, st.SettingsForProfile(profileID))
 		st.Items = append(st.Items, it)
 		sortItems(st.Items)
 		out = it
@@ -1597,4 +1668,93 @@ func (e *Engine) FillNames(ctx context.Context, profileID string, ids []string) 
 	}
 	wg.Wait()
 	return first
+}
+
+// RunTelegramSummary manda ogni giorno, all'ora SummaryHour (Roma), il riepilogo sul bot di casa.
+func (e *Engine) RunTelegramSummary(ctx context.Context) {
+	if e.Telegram == nil || e.SummaryHour < 0 {
+		return
+	}
+	for {
+		n := time.Now().In(mywellness.Rome)
+		next := time.Date(n.Year(), n.Month(), n.Day(), e.SummaryHour, 0, 0, 0, mywellness.Rome)
+		if !next.After(n) {
+			next = next.AddDate(0, 0, 1)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Until(next)):
+		}
+		if err := e.Telegram.SendNow(ctx, e.Summary()); err != nil {
+			log.Printf("telegram: riepilogo non inviato: %v", err)
+		}
+	}
+}
+
+// Summary: stato del servizio, prenotazioni fatte oggi, lezioni in osservazione e tentativi di domani,
+// sempre col nome dell'utente.
+func (e *Engine) Summary() string {
+	n := time.Now().In(mywellness.Rome)
+	today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, mywellness.Rome)
+	tomorrow := today.AddDate(0, 0, 1)
+	var b strings.Builder
+	fmt.Fprintf(&b, "🏋️ Wellness Gateway %s — %s\n", e.Version, n.Format("02/01 15:04"))
+	fmt.Fprintf(&b, "🟢 Servizio attivo su Unraid da %s", e.Started.In(mywellness.Rome).Format("02/01 15:04"))
+	var booked, errs, watch, next []string
+	e.Store.Read(func(st *model.State) {
+		names := map[string]string{}
+		for _, p := range st.Profiles {
+			names[p.ID] = p.Label
+		}
+		who := func(id string) string {
+			if l := names[id]; l != "" {
+				return l
+			}
+			return "Gateway"
+		}
+		for _, l := range st.Log {
+			if l.Time.Before(today) {
+				break // il registro è dal più recente
+			}
+			if strings.Contains(l.Text, "✅") {
+				booked = append(booked, "• "+who(l.ProfileID)+" — "+strings.TrimSpace(strings.TrimPrefix(l.Text, "✅")))
+			}
+			if l.Level == "error" {
+				errs = append(errs, "• "+who(l.ProfileID)+" — "+l.Text)
+			}
+		}
+		items := append([]model.Item(nil), st.Items...)
+		sort.Slice(items, func(i, j int) bool { return items[i].Start.Before(items[j].Start) })
+		for _, it := range items {
+			switch it.State {
+			case model.StateWatching, model.StateWaitingList:
+				watch = append(watch, fmt.Sprintf("• %s — %s %s · %s", who(it.ProfileID), it.Name, fmtTime(it.Start), map[model.WatchState]string{model.StateWatching: "osservazione", model.StateWaitingList: "lista d'attesa"}[it.State]))
+			case model.StatePending:
+				ts := fireTimes(it, st.SettingsForProfile(it.ProfileID))
+				if !ts[0].Before(tomorrow) && ts[0].Before(tomorrow.AddDate(0, 0, 1)) {
+					hh := []string{}
+					for _, t := range ts {
+						hh = append(hh, t.In(mywellness.Rome).Format("15:04"))
+					}
+					next = append(next, fmt.Sprintf("• %s — %s %s · tentativi alle %s", who(it.ProfileID), it.Name, fmtTime(it.Start), strings.Join(hh, " e ")))
+				}
+			}
+		}
+	})
+	section := func(title string, lines []string, empty string) {
+		fmt.Fprintf(&b, "\n\n%s\n", title)
+		if len(lines) == 0 {
+			b.WriteString(empty)
+			return
+		}
+		b.WriteString(strings.Join(lines, "\n"))
+	}
+	section("Prenotate oggi:", booked, "nessuna")
+	section("Domani provo a prenotare:", next, "nessuna apertura")
+	section("In osservazione / lista d'attesa:", watch, "nessuna")
+	if len(errs) > 0 {
+		section("⚠️ Errori di oggi:", errs, "")
+	}
+	return b.String()
 }

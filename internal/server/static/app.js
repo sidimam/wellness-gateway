@@ -137,7 +137,8 @@ const bindProfileSelect = cb => { const s = $('#psel'); if (s) s.onchange = () =
 const itemCard = (it, actions) => `<div class="item">${it.pictureUrl ? `<img src="${esc(it.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body">
   <div class="title">${esc(it.name)} ${it.recurring ? '🔁' : ''} <span class="badge ${esc(it.state)}">${STATE[it.state] || it.state}</span></div>
   <div class="sub">${fmtD(it.start)} – ${fmtT(it.end)}${it.room ? ' · ' + esc(it.room) : ''}${it.trainer ? ' · ' + esc(it.trainer) : ''}</div>
-  ${it.state === 'pending' && it.fireAt ? `<div class="sub">Prenoto ${fmtD(it.fireAt)}</div>` : ''}
+  ${it.state === 'pending' && it.fireAt ? `<div class="sub">Prenoto ${fmtD(it.fireAt)}${(it.fireTimes || []).slice(1).map(t => ` ${i18n.t('e alle')} ${fmtT(t)}`).join('')}</div>` : ''}
+  ${it.state === 'watching' && (it.fireTimes || []).length > (it.round || 0) + 1 && new Date(it.fireTimes[(it.round || 0) + 1]) > new Date() ? `<div class="sub">${i18n.t('Nuovo tentativo alle')} ${fmtT(it.fireTimes[(it.round || 0) + 1])}</div>` : ''}
   ${it.lastMessage ? `<div class="sub">${esc(it.lastMessage)}</div>` : ''}
   ${it.lastCheck && !['booked', 'expired', 'cancelled'].includes(it.state) ? `<div class="sub">Ultimo controllo ${fmtT(it.lastCheck)} · tentativi ${it.attempts}</div>` : ''}
   <div class="row" style="margin-top:6px">${actions}</div></div></div>`;
@@ -193,22 +194,26 @@ async function classes() {
   const draw = () => {
     if (!stillHere(myView) || !$('#q')) return;
     const q = $('#q').value.toLowerCase();
-    const list = all.filter(c => new Date(c.start) > new Date() && (!q || (c.name + ' ' + (c.assignedTo || '') + ' ' + (c.room || '')).toLowerCase().includes(q)));
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const list = all.filter(c => new Date(c.start) >= midnight && (!q || (c.name + ' ' + (c.assignedTo || '') + ' ' + (c.room || '')).toLowerCase().includes(q)));
     let html = '', day = '';
     for (const c of list) {
       const d = new Date(c.start).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
       if (d !== day) { day = d; html += `<div class="day">${d}</div><div class="grid">`; }
       const bi = c.bookingInfo || {};
       const status = c.isParticipant ? '<span class="badge booked">Prenotata</span>' : c.isInWaitingList ? '<span class="badge waitingList">In lista d\'attesa</span>' : bi.bookingAvailable === false ? '<span class="badge">Non prenotabile online</span>' : c.opensOn && new Date(c.opensOn) > new Date() ? `<span class="badge pending">Apre ${fmtD(c.opensOn)}</span>` : c.availablePlaces <= 0 ? '<span class="badge watching">Piena · lista d\'attesa</span>' : `<span class="badge booked">${c.availablePlaces} liberi su ${c.maxParticipants}</span>`;
-      const actions = (c.tracked ? `<span class="badge ${esc(c.tracked.state)}">${STATE[c.tracked.state]}</span>` : `<button class="small" data-add="${c.id}|${c.partitionDate}">Prenota questa</button><button class="small" data-addr="${c.id}|${c.partitionDate}">Ogni settimana</button>`) + `<button class="small" data-who="${c.id}|${c.partitionDate}" title="Chi partecipa">👥 ${c.numberOfParticipants || 0}</button>`;
-      html += `<div class="item">${c.pictureUrl ? `<img src="${esc(c.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body"><div class="title">${fmtT(c.start)}–${fmtT(c.end)} · ${esc(c.name)}</div><div class="sub">${esc(c.assignedTo || '')}${c.room ? ' · ' + esc(c.room) : ''}</div><div class="row" style="margin-top:6px">${status} ${actions}</div></div></div>`;
+      const actions = ended ? `<button class="small" data-who="${c.id}|${c.partitionDate}" title="Chi partecipa">👥 ${c.numberOfParticipants || 0}</button>` : (c.tracked ? `<span class="badge ${esc(c.tracked.state)}">${STATE[c.tracked.state]}</span>` : `<button class="small" data-add="${c.id}|${c.partitionDate}">Prenota questa</button><button class="small" data-addr="${c.id}|${c.partitionDate}">Ogni settimana</button>`) + `<button class="small" data-who="${c.id}|${c.partitionDate}" title="Chi partecipa">👥 ${c.numberOfParticipants || 0}</button>`;
+      const ended = new Date(c.end) < new Date();
+      html += `<div class="item${ended ? ' ended' : ''}" data-open="${c.id}|${c.partitionDate}" style="cursor:pointer" title="${i18n.t('Chi partecipa')}">${c.pictureUrl ? `<img src="${esc(c.pictureUrl)}" alt="">` : '<div style="width:56px"></div>'}<div class="body"><div class="title">${fmtT(c.start)}–${fmtT(c.end)} · ${esc(c.name)}${ended ? ` <span class="badge">${i18n.t('conclusa')}</span>` : ''}</div><div class="sub">${esc(c.assignedTo || '')}${c.room ? ' · ' + esc(c.room) : ''}</div><div class="row" style="margin-top:6px">${status} ${actions}</div></div></div>`;
       if (list[list.indexOf(c) + 1] && new Date(list[list.indexOf(c) + 1].start).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) !== d) html += '</div>';
     }
     $('#list').innerHTML = html + '</div>' || '<p class="mut">Nessuna lezione.</p>';
     const add = (b, rec) => async () => { try { await api('/items', { method: 'POST', body: { profileId: currentProfile, classId: b.split('|')[0], partitionDate: +b.split('|')[1], recurring: rec } }); msg($('#m'), 'Aggiunta alle prenotazioni automatiche.', true); load(); } catch (e) { msg($('#m'), e.message); } };
     main.querySelectorAll('[data-add]').forEach(b => b.onclick = add(b.dataset.add, false));
     main.querySelectorAll('[data-addr]').forEach(b => b.onclick = add(b.dataset.addr, true));
-    main.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { const c = all.find(x => `${x.id}|${x.partitionDate}` === b.dataset.who); participantsDialog(currentProfile, c); });
+    const openC = key => { const c = all.find(x => `${x.id}|${x.partitionDate}` === key); if (c) participantsDialog(currentProfile, c); };
+    main.querySelectorAll('[data-who]').forEach(b => b.onclick = ev => { ev.stopPropagation(); openC(b.dataset.who); });
+    main.querySelectorAll('[data-open]').forEach(el => el.onclick = ev => { if (ev.target.closest('button')) return; openC(el.dataset.open); });
   };
   const load = async (refresh) => { msg($('#m'), ''); try { all = await api(`/profiles/${currentProfile}/classes${refresh ? '?refresh=1' : ''}`); draw(); } catch (e) { if (stillHere(myView) && $('#m')) msg($('#m'), e.message); } };
   $('#q').oninput = draw; $('#rf').onclick = () => load(true); bindProfileSelect(load); load();
@@ -231,11 +236,18 @@ const memberCard = m => `<div class="item" data-member="${esc(m.id)}" style="cur
   <div class="sub">${(m.classes || []).slice(0, 3).map(esc).join(' · ')}${m.joinedOn ? ` · ${i18n.t('iscritto')} ${fmtD(m.joinedOn)}` : ''}${m.station ? ` · ${i18n.t('postazione')} ${esc(m.station)}` : ''}</div>
   <div class="row" style="margin-top:4px">${seenBadge(m)}${m.bestWeekPosition ? `<span class="badge bursting">🏆 ${i18n.t('settimana')} #${m.bestWeekPosition}</span>` : ''}${m.bestMonthPosition ? `<span class="badge bursting">🏆 ${i18n.t('mese')} #${m.bestMonthPosition}</span>` : ''}</div></div></div>`;
 function bindMemberCards(root) { root.querySelectorAll('[data-member]').forEach(el => el.onclick = () => memberDialog(el.dataset.member)); bindZoom(root); }
-function ensureDialog() { let d = $('#pdlg'); if (!d) { d = document.createElement('dialog'); d.id = 'pdlg'; document.body.appendChild(d); } return d; }
-async function participantsDialog(profileId, c) {
+function ensureDialog() { let d = $('#pdlg'); if (!d) { d = document.createElement('dialog'); d.id = 'pdlg'; document.body.appendChild(d); d.addEventListener('close', () => { navStack = []; }); } return d; }
+// navigazione ciclica lezione → socio → lezione…: ogni schermata si mette in pila, "Indietro" torna alla precedente
+let navStack = [];
+const navPush = fn => { navStack.push(fn); fn(); };
+const navBack = () => { navStack.pop(); const prev = navStack[navStack.length - 1]; if (prev) prev(); else ensureDialog().close(); };
+const backBtn = () => navStack.length > 1 ? `<button type="button" class="small" data-back>← ${i18n.t('Indietro')}</button>` : '';
+function bindNav(dlg) { dlg.querySelectorAll('[data-back]').forEach(b => b.onclick = navBack); dlg.querySelectorAll('[data-close]').forEach(b => b.onclick = () => dlg.close()); }
+function participantsDialog(profileId, c) { const dlg = ensureDialog(); if (!dlg.open) { navStack = []; dlg.showModal(); } navPush(() => drawParticipants(profileId, c)); }
+async function drawParticipants(profileId, c) {
   const dlg = ensureDialog();
-  dlg.innerHTML = `<div class="dlg"><h2 style="margin:0 0 4px">${esc(c.name)}</h2><p class="mut" style="margin:0 0 10px">${fmtD(c.start)}${c.room ? ' · ' + esc(c.room) : ''}${c.assignedTo ? ' · ' + esc(c.assignedTo) : ''}</p><p class="mut" id="pd-m">${i18n.t('Lettura degli iscritti da mywellness…')}</p><div id="pd-list" class="grid"></div><p class="row" style="margin-top:12px"><button type="button" class="small" id="pd-close">Chiudi</button></p></div>`;
-  dlg.showModal(); $('#pd-close').onclick = () => dlg.close();
+  dlg.innerHTML = `<div class="dlg">${backBtn()}<h2 style="margin:6px 0 4px">${esc(c.name)}</h2><p class="mut" style="margin:0 0 10px">${fmtD(c.start)}${c.room ? ' · ' + esc(c.room) : ''}${c.assignedTo ? ' · ' + esc(c.assignedTo) : ''}</p><p class="mut" id="pd-m">${i18n.t('Lettura degli iscritti da mywellness…')}</p><div id="pd-list" class="grid"></div><p class="row" style="margin-top:12px">${backBtn()}<button type="button" class="small" data-close>Chiudi</button></p></div>`;
+  bindNav(dlg);
   try {
     const r = await api(`/profiles/${profileId}/classes/${c.id}/${c.partitionDate}/participants`);
     $('#pd-m').textContent = `${r.participants.length} ${i18n.t('iscritti')} · ${i18n.t('aggiornato')} ${r.observedAt ? fmtD(r.observedAt) : '—'}${r.liveError ? ' · ' + r.liveError : ''}`;
@@ -243,18 +255,23 @@ async function participantsDialog(profileId, c) {
     bindMemberCards(dlg);
   } catch (e) { $('#pd-m').textContent = e.message; }
 }
-async function memberDialog(id) {
+function memberDialog(id) { const dlg = ensureDialog(); if (!dlg.open) { navStack = []; dlg.showModal(); } navPush(() => drawMember(id)); }
+async function drawMember(id) {
   const dlg = ensureDialog();
-  dlg.innerHTML = `<div class="dlg"><p class="mut">${i18n.t('Caricamento…')}</p></div>`; dlg.showModal();
+  dlg.innerHTML = `<div class="dlg"><p class="mut">${i18n.t('Caricamento…')}</p></div>`;
   try {
     const r = await api('/people/members/' + encodeURIComponent(id)); const m = r.member;
     dlg.innerHTML = `<div class="dlg"><div class="row" style="gap:12px">${zoomAvatar(m, 96)}<div><h2 style="margin:0">${m.private ? i18n.t('Profilo privato') : esc(fullName(m) || m.nickName || '—')}</h2>${!m.private && fullName(m) && m.nickName ? `<div class="mut">${esc(m.nickName)}</div>` : ''}<small class="mut">${i18n.t('visto')} ${m.seenCount}× · ${i18n.t('dal')} ${fmtDay(m.firstSeen)} · ${i18n.t('ultima volta')} ${fmtDay(m.lastSeen)}</small></div></div>
       ${(m.classes || []).length ? `<p>${i18n.t('Lezioni frequentate')}: ${m.classes.map(esc).join(', ')}</p>` : ''}
       ${r.leaderboard.length ? `<h3>${i18n.t('Classifica MOVEs')}</h3><table>${r.leaderboard.map(l => `<tr><td>${l.trend === 'week' ? i18n.t('settimana') : i18n.t('mese')} ${esc(l.period)}</td><td>#${l.position}</td><td>${l.moves} MOVEs</td></tr>`).join('')}</table>` : ''}
-      <h3>${i18n.t('Presenze registrate')} (${r.attendance.length})</h3><table>${r.attendance.map(a => `<tr><td>${fmtD(a.start)}</td><td>${esc(a.name)}</td><td class="mut">${esc(a.room || '')}${a.station ? ' · ' + esc(a.station) : ''}</td></tr>`).join('') || `<tr><td class="mut">—</td></tr>`}</table>
+      ${(() => { const now = new Date(); const row = a => `<tr data-class="${esc(a.classId)}|${a.partitionDate}" style="cursor:pointer" title="${i18n.t('Chi partecipa')}"><td>${fmtD(a.start)}</td><td><b>${esc(a.name)}</b></td><td class="mut">${esc(a.room || '')}${a.station ? ' · ' + esc(a.station) : ''}</td><td>👥 →</td></tr>`;
+        const next = r.attendance.filter(a => new Date(a.start) >= now).reverse(), past = r.attendance.filter(a => new Date(a.start) < now);
+        return `<h3>${i18n.t('Iscritto alle prossime lezioni')} (${next.length})</h3><table>${next.map(row).join('') || `<tr><td class="mut">—</td></tr>`}</table>
+        <h3>${i18n.t('Lezioni passate')} (${past.length})</h3><table>${past.map(row).join('') || `<tr><td class="mut">—</td></tr>`}</table>`; })()}
       ${m.extra ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">ⓘ ${i18n.t('Dati tecnici')}</summary><pre style="font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(m.extra, null, 1))}</pre></details>` : ''}
-      <p class="row" style="margin-top:12px"><button type="button" class="small" id="pd-close">Chiudi</button></p></div>`;
-    $('#pd-close').onclick = () => dlg.close(); bindZoom(dlg);
+      <p class="row" style="margin-top:12px">${backBtn()}<button type="button" class="small" data-close>Chiudi</button></p></div>`;
+    bindNav(dlg); bindZoom(dlg);
+    dlg.querySelectorAll('[data-class]').forEach(tr => tr.onclick = () => { const [cid, pd] = tr.dataset.class.split('|'); const a = r.attendance.find(x => x.classId === cid && String(x.partitionDate) === pd); navPush(() => drawParticipants(currentProfile, { id: cid, partitionDate: +pd, name: a.name, start: a.start, room: a.room, assignedTo: a.trainer })); });
   } catch (e) { dlg.innerHTML = `<div class="dlg"><p class="msg err">${esc(e.message)}</p><button type="button" class="small" onclick="this.closest('dialog').close()">Chiudi</button></div>`; }
 }
 async function peopleView() {
@@ -458,6 +475,7 @@ async function settings(scope) {
     </div><p class="mut">Valgono per questo browser.</p></div>
     <div class="card"><h2>Motore</h2>
     <p class="mut">${me.user.isAdmin ? `<label>Stai modificando</label><select id="scope"><option value="mine" ${scope === 'mine' ? 'selected' : ''}>Le mie impostazioni</option><option value="default" ${scope === 'default' ? 'selected' : ''}>Le impostazioni predefinite (per chi non ha le sue)</option></select>` : ''}
+    ${me?.user?.isAdmin ? `<span class="row" style="gap:8px"><button type="button" class="small" id="tgtest">📨 ${i18n.t('Invia riepilogo su Telegram')}</button><span id="tgmsg" class="mut"></span></span><br>` : ''}
     ${scope === 'mine' ? (s.custom ? 'Queste sono le tue impostazioni personali: valgono per le tue lezioni. <button type="button" class="small" id="reset">Torna alle predefinite</button>' : 'Stai usando le impostazioni predefinite: salvando diventano le tue impostazioni personali.') : 'Valgono per tutti gli utenti che non hanno impostazioni personali.'}</p>
     <label><input type="checkbox" id="fs" ${s.followServerOpenTime ? 'checked' : ''} ${ro ? 'disabled' : ''} style="width:auto"> Segui l'orario di apertura comunicato dal centro</label>
     <h2 style="margin-top:14px">Regole di prenotazione (quanti giorni prima apre ogni tipo di lezione)</h2>
@@ -484,10 +502,11 @@ async function settings(scope) {
   const drawRules = () => {
     const today = new Date().toISOString().slice(0, 10);
     const active = (r) => !r.validFrom || r.validFrom <= today;
-    $('#rules').innerHTML = `<table><tr><th>Testo nel nome</th><th>Valida dal</th><th>Giorni prima</th><th>Ora</th><th>Max prenotazioni</th><th>Max a settimana</th><th>Lezioni intercettate</th><th></th></tr>${rules.map((r, i) => `<tr${active(r) ? '' : ' style="opacity:.75"'}><td><input data-p="${i}" value="${esc(r.pattern)}" ${ro || r.pattern === '*' ? 'disabled' : ''} placeholder="es. Reformer"></td><td><input data-vf="${i}" type="date" value="${esc(r.validFrom || '')}" ${ro ? 'disabled' : ''} style="width:150px" title="Vuoto = sempre; altrimenti la regola vale per le aperture da questo giorno">${active(r) ? '' : `<div class="mut" style="font-size:11px">${i18n.t('dal')} ${esc(r.validFrom)}</div>`}</td><td><input data-d="${i}" type="number" min="0" value="${r.daysBefore}" ${ro ? 'disabled' : ''} style="width:80px"></td><td><input data-t="${i}" type="time" value="${String(r.hour).padStart(2, '0')}:${String(r.minute).padStart(2, '0')}" ${ro ? 'disabled' : ''} style="width:110px"></td><td>${r.pattern === '*' ? '<span class="mut" style="font-size:12px">limite del profilo</span>' : `<input data-mx="${i}" type="number" min="0" value="${r.maxBookings || 0}" ${ro ? 'disabled' : ''} style="width:80px" title="0 = conta nel limite del profilo; >0 = quota separata che non conta nel limite del profilo">`}</td><td>${r.pattern === '*' ? '' : `<input data-mw="${i}" type="number" min="0" value="${r.maxPerWeek || 0}" ${ro ? 'disabled' : ''} style="width:80px" title="0 = nessun limite settimanale">`}</td><td class="mut matchcell" style="font-size:12px">${r.pattern === '*' ? 'tutte le altre' : (matches(r.pattern).join(', ') || (r.pattern.trim() ? 'nessuna lezione in calendario' : 'scrivi un testo'))}</td><td>${!ro && r.pattern !== '*' ? `<button class="danger" data-x="${i}">Elimina</button>` : ''}</td></tr>`).join('')}</table>`;
+    $('#rules').innerHTML = `<table><tr><th>Testo nel nome</th><th>Valida dal</th><th>Giorni prima</th><th>Ora</th><th>Anche alle</th><th>Max prenotazioni</th><th>Max a settimana</th><th>Lezioni intercettate</th><th></th></tr>${rules.map((r, i) => `<tr${active(r) ? '' : ' style="opacity:.75"'}><td><input data-p="${i}" value="${esc(r.pattern)}" ${ro || r.pattern === '*' ? 'disabled' : ''} placeholder="es. Reformer"></td><td><input data-vf="${i}" type="date" value="${esc(r.validFrom || '')}" ${ro ? 'disabled' : ''} style="width:150px" title="Vuoto = sempre; altrimenti la regola vale per le aperture da questo giorno">${active(r) ? '' : `<div class="mut" style="font-size:11px">${i18n.t('dal')} ${esc(r.validFrom)}</div>`}</td><td><input data-d="${i}" type="number" min="0" value="${r.daysBefore}" ${ro ? 'disabled' : ''} style="width:80px"></td><td><input data-t="${i}" type="time" value="${String(r.hour).padStart(2, '0')}:${String(r.minute).padStart(2, '0')}" ${ro ? 'disabled' : ''} style="width:110px"></td><td><input data-aa="${i}" type="time" value="${esc(r.alsoAt || '')}" ${ro ? 'disabled' : ''} style="width:110px" title="${i18n.t('Secondo orario di primo tentativo nello stesso giorno (vuoto = nessuno)')}"></td><td>${r.pattern === '*' ? '<span class="mut" style="font-size:12px">limite del profilo</span>' : `<input data-mx="${i}" type="number" min="0" value="${r.maxBookings || 0}" ${ro ? 'disabled' : ''} style="width:80px" title="0 = conta nel limite del profilo; >0 = quota separata che non conta nel limite del profilo">`}</td><td>${r.pattern === '*' ? '' : `<input data-mw="${i}" type="number" min="0" value="${r.maxPerWeek || 0}" ${ro ? 'disabled' : ''} style="width:80px" title="0 = nessun limite settimanale">`}</td><td class="mut matchcell" style="font-size:12px">${r.pattern === '*' ? 'tutte le altre' : (matches(r.pattern).join(', ') || (r.pattern.trim() ? 'nessuna lezione in calendario' : 'scrivi un testo'))}</td><td>${!ro && r.pattern !== '*' ? `<button class="danger" data-x="${i}">Elimina</button>` : ''}</td></tr>`).join('')}</table>`;
     main.querySelectorAll('[data-p]').forEach(i => i.oninput = () => { rules[+i.dataset.p].pattern = i.value; const td = i.closest('tr').querySelector('.matchcell'); td.textContent = matches(i.value).join(', ') || (i.value.trim() ? 'nessuna lezione in calendario' : 'scrivi un testo'); });
     main.querySelectorAll('[data-vf]').forEach(i => i.oninput = () => { rules[+i.dataset.vf].validFrom = i.value || undefined; });
     main.querySelectorAll('[data-mw]').forEach(i => i.oninput = () => rules[+i.dataset.mw].maxPerWeek = +i.value);
+    main.querySelectorAll('[data-aa]').forEach(i => i.oninput = () => { rules[+i.dataset.aa].alsoAt = i.value || undefined; });
     main.querySelectorAll('[data-d]').forEach(i => i.oninput = () => rules[+i.dataset.d].daysBefore = +i.value);
     main.querySelectorAll('[data-mx]').forEach(i => i.oninput = () => rules[+i.dataset.mx].maxBookings = +i.value);
     main.querySelectorAll('[data-t]').forEach(i => i.oninput = () => { const [h, m] = i.value.split(':'); rules[+i.dataset.t].hour = +h; rules[+i.dataset.t].minute = +m; });
@@ -496,6 +515,7 @@ async function settings(scope) {
   drawRules();
   $('#addr') && ($('#addr').onclick = () => { rules.splice(Math.max(0, rules.length - 1), 0, { pattern: '', daysBefore: 3, hour: 5, minute: 0 }); drawRules(); });
   if ($('#scope')) $('#scope').onchange = () => settings($('#scope').value);
+  if ($('#tgtest')) $('#tgtest').onclick = async () => { try { await api('/telegram/test', { method: 'POST' }); $('#tgmsg').textContent = i18n.t('Inviato.'); } catch (e) { $('#tgmsg').textContent = e.message; } };
   if ($('#reset')) $('#reset').onclick = async () => { if (!confirm(i18n.t('Tornare alle impostazioni predefinite?'))) return; await api('/settings', { method: 'DELETE' }); settings('mine'); };
   $('#save') && ($('#save').onclick = async () => {
     try { await api('/settings' + q, { method: 'PUT', body: { followServerOpenTime: $('#fs').checked, openRules: rules.filter(r => r.pattern.trim()), leadMilliseconds: +$('#lead').value, burstSeconds: +$('#burst').value, pollSeconds: +$('#poll').value, nearPollSeconds: +$('#npoll').value, nearHours: +$('#nhours').value, daysAhead: +$('#days').value, priorityNotifications: $('#prio').checked } }); msg($('#m'), 'Impostazioni salvate.', true); } catch (e) { msg($('#m'), e.message); }

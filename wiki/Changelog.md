@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.10 (2026-10-31)
+- **Two first attempts per rule** (`alsoAt`, web column "Anche alle"): Reformer now tries at **05:01 and 07:01** of the opening day. On 31/10 mywellness reported the Reformer opening at 07:00 but the gateway booked at 05:00:59, so the reported opening is now an extra attempt instead of replacing the rule time. Wellness Town rules migrated: one Reformer rule 3 days before, 05:01 + 07:01, max 3, max 2 per week.
+- **Telegram** on the home bot (`TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`): booking, free spot, waiting list, class missed, second attempt, weekly limit and errors, always with the **user's name**; daily summary at 21:00 (`TELEGRAM_SUMMARY_HOUR`) with service status, bookings of the day, tomorrow's attempts and watched classes; admin button to send it now.
+- **Today's classes stay visible until midnight** (Prenotazioni and Lezioni), ended ones greyed with "conclusa".
+- **Participants everywhere**: clicking a class in Lezioni opens its participants; in a member card the classes are split into "Iscritto alle prossime lezioni" and "Lezioni passate", each opening the class participants, from which you open another member and so on (cyclic navigation with "← Indietro").
+
 ## v0.2.9 (2026-10-29)
 - Web UI: members appear as **first and last name** with the **nickname on the line below**; member photos can be **enlarged** (click the photo in the lists or in the member card; click or Esc to close).
 - Faster name backfill for members already in `people.db`: up to 400 per 15-minute round (was 120), timeout 20 s + 0.2 s per member.
