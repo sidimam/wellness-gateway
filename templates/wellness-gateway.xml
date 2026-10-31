@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-31 (v0.2.10)
+  <Changes>### 2026-10-31 (v0.2.11)
+- Fix: Lezioni page error in 0.2.10 (classes, participants and photos did not open).
+
+### 2026-10-31 (v0.2.10)
 - Two first attempts per rule (Reformer 05:01 and 07:01), Telegram notices with the user's name + daily summary, today's classes visible until midnight, participants and member↔class navigation.
 
 ### 2026-10-29 (v0.2.9)

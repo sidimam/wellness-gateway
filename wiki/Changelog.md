@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.11 (2026-10-31)
+- **Fix (web UI, Lezioni)**: the page stopped with "Cannot access 'ended' before initialization" (variable used before its definition in 0.2.10), so classes, participants and member photos could not be opened from it. Ended classes no longer show the free places badge.
+- `scripts/mockui.py`: local mock of the API (fake data, no mywellness, no bookings) to regression-test the web UI in a browser and the iOS app in the simulator (Debug launch argument `-mockGateway http://localhost:8599`).
+
 ## v0.2.10 (2026-10-31)
 - **Two first attempts per rule** (`alsoAt`, web column "Anche alle"): Reformer now tries at **05:01 and 07:01** of the opening day. On 31/10 mywellness reported the Reformer opening at 07:00 but the gateway booked at 05:00:59, so the reported opening is now an extra attempt instead of replacing the rule time. Wellness Town rules migrated: one Reformer rule 3 days before, 05:01 + 07:01, max 3, max 2 per week.
 - **Telegram** on the home bot (`TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`): booking, free spot, waiting list, class missed, second attempt, weekly limit and errors, always with the **user's name**; daily summary at 21:00 (`TELEGRAM_SUMMARY_HOUR`) with service status, bookings of the day, tomorrow's attempts and watched classes; admin button to send it now.

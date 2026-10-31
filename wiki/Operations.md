@@ -12,3 +12,8 @@
 
 ## Web UI behind Cloudflare
 Static assets are served with `Cache-Control: no-store` and versioned URLs (`?v=<version>`), so a new release is picked up at the first reload. If a browser still shows an old UI, hard-reload (Cmd+Shift+R).
+
+## Regression tests before a release
+- `go test ./...` (engine rules, attempts, summary, people DB, Telegram, mywellness client).
+- Web UI against fake data: `python3 scripts/mockui.py` → http://localhost:8599 (log in with anything): Lezioni (today's ended classes, click → participants), Persone (member card, photo zoom, member → class → member → "← Indietro"), Prenotazioni ("Prenoto … e alle …"), Impostazioni ("Anche alle", Telegram button).
+- iOS app in the simulator against the same mock: Debug build launched with `-mockGateway http://localhost:8599`.
