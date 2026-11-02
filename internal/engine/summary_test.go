@@ -40,3 +40,23 @@ func TestSummaryNamesUsers(t *testing.T) {
 		}
 	}
 }
+
+// Su Telegram vanno prenotazioni ed eventi utili, col nome dell'utente; mai i rinnovi di sessione.
+func TestTelegramText(t *testing.T) {
+	cases := []struct {
+		level, text, want string
+		ok                bool
+	}{
+		{"info", "sessione mywellness scaduta: nuovo login", "", false},
+		{"success", "login mywellness riuscito per Daniela (Daniela M.)", "", false},
+		{"success", "✅ Group Reformer Thu 5 Nov 17:30: Prenotata (posto liberato)", "Daniela · ✅ Group Reformer Thu 5 Nov 17:30: Prenotata (posto liberato)", true},
+		{"warn", "scaduta: PILATES Mon 9 Nov 18:00", "❌ Daniela · non prenotata, prenotazioni chiuse — PILATES Mon 9 Nov 18:00", true},
+		{"error", "login mywellness fallito per Daniela: password", "⚠️ Daniela · login mywellness fallito per Daniela: password", true},
+	}
+	for _, c := range cases {
+		got, ok := telegramText(c.level, "Daniela", c.text)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%q: %q %v, atteso %q %v", c.text, got, ok, c.want, c.ok)
+		}
+	}
+}

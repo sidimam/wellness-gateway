@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.12 (2026-11-02)
+- **Reformer opens at 07:00**: on 2/11 the 05:01 attempt and the watching got HTTP 400 every 15 s until 07:00, and the booking went through at 07:00:08. The Wellness Town Reformer rule is now a single attempt at **07:00** (lead 300 ms, 120 s burst: it covers 07:00:00–07:02), without the 05:01 time.
+- **No attempts before the reported opening while watching**: when mywellness reports a future `bookingOpensOn`, watching no longer tries to book (places look free but booking answers HTTP 400) and shows "Prenotazioni aperte dalle …". The rule attempts are unchanged.
+- **Telegram**: the "sessione mywellness scaduta: nuovo login" lines are no longer sent (they matched the "class missed" filter); filter moved to `telegramText` with tests.
+
 ## v0.2.11 (2026-10-31)
 - **Fix (web UI, Lezioni)**: the page stopped with "Cannot access 'ended' before initialization" (variable used before its definition in 0.2.10), so classes, participants and member photos could not be opened from it. Ended classes no longer show the free places badge.
 - `scripts/mockui.py`: local mock of the API (fake data, no mywellness, no bookings) to regression-test the web UI in a browser and the iOS app in the simulator (Debug launch argument `-mockGateway http://localhost:8599`).

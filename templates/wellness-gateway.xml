@@ -21,7 +21,10 @@
   <DonateLink/>
   <Beta>False</Beta>
   <Date>2026-10-04</Date>
-  <Changes>### 2026-10-31 (v0.2.11)
+  <Changes>### 2026-11-02 (v0.2.12)
+- Reformer at 07:00 only, no booking attempts before the reported opening, no "session expired" messages on Telegram.
+
+### 2026-10-31 (v0.2.11)
 - Fix: Lezioni page error in 0.2.10 (classes, participants and photos did not open).
 
 ### 2026-10-31 (v0.2.10)

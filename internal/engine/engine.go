@@ -94,24 +94,33 @@ func (e *Engine) telegramEvent(level, profileID, text string) {
 	if e.Telegram == nil {
 		return
 	}
-	notable := level == "error"
-	for _, k := range []string{"✅", "🔔", "scaduta:", "disdetta rilevata", "in lista d'attesa", "limite settimanale", "secondo tentativo"} {
+	who := "Gateway"
+	if p, ok := e.profile(profileID); ok {
+		who = p.Label
+	}
+	if msg, ok := telegramText(level, who, text); ok {
+		e.Telegram.Send(msg, 6*time.Hour)
+	}
+}
+
+// telegramText decide se una riga del registro va su Telegram e come: solo ciò che serve all'utente
+// (prenotazioni, posti liberi, liste d'attesa, lezioni perse, limiti, errori), mai le righe di servizio come
+// "sessione mywellness scaduta: nuovo login" (contiene "scaduta:" ma non è una lezione persa).
+func telegramText(level, who, text string) (string, bool) {
+	notable := level == "error" || strings.HasPrefix(text, "scaduta:")
+	for _, k := range []string{"✅", "🔔", "disdetta rilevata", "in lista d'attesa", "limite settimanale", "secondo tentativo"} {
 		if strings.Contains(text, k) {
 			notable = true
 		}
 	}
 	if !notable {
-		return
-	}
-	who := "Gateway"
-	if p, ok := e.profile(profileID); ok {
-		who = p.Label
+		return "", false
 	}
 	icon := map[string]string{"error": "⚠️ ", "warn": "ℹ️ "}[level]
 	if strings.HasPrefix(text, "scaduta:") {
 		icon, text = "❌ ", "non prenotata, prenotazioni chiuse —"+strings.TrimPrefix(text, "scaduta:")
 	}
-	e.Telegram.Send(fmt.Sprintf("%s%s · %s", icon, who, text), 6*time.Hour)
+	return fmt.Sprintf("%s%s · %s", icon, who, text), true
 }
 
 // Run esegue il loop finché il contesto non è annullato.
@@ -1136,6 +1145,14 @@ func (e *Engine) watch(ctx context.Context, id string) {
 	e.setItem(id, func(x *model.Item) { x.Available, x.MaxPlaces = &ap, &mp })
 	if authenticated && ev.IsParticipant {
 		e.markBooked(it, "Posto confermato dal calendario")
+		return
+	}
+	// prima dell'apertura comunicata dal centro i posti risultano liberi ma la prenotazione risponde HTTP 400:
+	// niente tentativi a vuoto (il 2/11 la Reformer veniva tentata ogni 15 s dalle 05:03 alle 07:00)
+	if o := ev.OpensOn(); o != nil && time.Now().Before(*o) {
+		e.setItem(id, func(x *model.Item) {
+			x.LastMessage = "Prenotazioni aperte dalle " + o.In(mywellness.Rome).Format("15:04 del 2/1")
+		})
 		return
 	}
 	if ev.HasPlace() {
