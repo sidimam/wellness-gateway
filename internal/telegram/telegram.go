@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -60,12 +61,30 @@ func (b *Bot) Send(text string, dedupe time.Duration) {
 	}()
 }
 
+// Prefix apre ogni messaggio, così in chat si capisce chi scrive: in casa mandano messaggi anche Home Assistant, Unraid,
+// Proxmox, Uptime Kuma e iCloud Dashboard. Si cambia con TELEGRAM_PREFIX (vuota = nessun prefisso).
+func Prefix() string {
+	if v, ok := os.LookupEnv("TELEGRAM_PREFIX"); ok {
+		return strings.TrimSpace(v)
+	}
+	return "WELLNESS:"
+}
+
+// withPrefix aggiunge il prefisso, una volta sola.
+func withPrefix(text string) string {
+	p := Prefix()
+	if p == "" || strings.HasPrefix(text, p) {
+		return text
+	}
+	return p + " " + text
+}
+
 // SendNow invia subito e restituisce l'errore.
 func (b *Bot) SendNow(ctx context.Context, text string) error {
 	if b == nil {
 		return nil
 	}
-	form := url.Values{"chat_id": {b.chat}, "text": {text}, "disable_web_page_preview": {"true"}}
+	form := url.Values{"chat_id": {b.chat}, "text": {withPrefix(text)}, "disable_web_page_preview": {"true"}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/bot"+b.token+"/sendMessage", strings.NewReader(form.Encode()))
 	if err != nil {
 		return err

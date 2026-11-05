@@ -46,6 +46,7 @@ Add a public hostname to your tunnel → service `HTTP`, URL `http://<nas-lan-ip
 | `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` | team `X5SR67A8AL`, bundle `com.sdimambro.wellness-booking` | Push configuration; push is disabled when the key is missing |
 | `APNS_PRODUCTION` | `true` | Production APNs host (TestFlight/App Store); `false` for Xcode debug builds |
 | `WG_SECRET_KEY` | | Passphrase for encrypting mywellness passwords; otherwise a random key is stored in `/config/secret.key` |
+| `TELEGRAM_PREFIX` | `WELLNESS:` | Text at the start of every Telegram message (empty = none) |
 | `TZ` | `Europe/Rome` | Timezone |
 
 ## API (for the iOS app)

@@ -20,7 +20,7 @@ func TestSendNow(t *testing.T) {
 	defer srv.Close()
 	b := New("TOK", "42")
 	b.base = srv.URL
-	if err := b.SendNow(context.Background(), "✅ Daniela: Reformer"); err != nil || got != "✅ Daniela: Reformer" {
+	if err := b.SendNow(context.Background(), "✅ Daniela: Reformer"); err != nil || got != "WELLNESS: ✅ Daniela: Reformer" {
 		t.Fatalf("invio: %v %q", err, got)
 	}
 	if New("", "42") != nil || New("TOK", "") != nil {
@@ -28,4 +28,18 @@ func TestSendNow(t *testing.T) {
 	}
 	var nilBot *Bot
 	nilBot.Send("x", 0) // non deve andare in panic
+}
+
+func TestWithPrefix(t *testing.T) {
+	t.Setenv("TELEGRAM_PREFIX", "WELLNESS:")
+	if got := withPrefix("✅ Simone · prenotata"); got != "WELLNESS: ✅ Simone · prenotata" {
+		t.Fatalf("prefisso mancante: %q", got)
+	}
+	if got := withPrefix("WELLNESS: già"); got != "WELLNESS: già" {
+		t.Fatalf("prefisso doppio: %q", got)
+	}
+	t.Setenv("TELEGRAM_PREFIX", "")
+	if got := withPrefix("testo"); got != "testo" {
+		t.Fatalf("con prefisso vuoto il testo deve restare uguale: %q", got)
+	}
 }

@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.13 (2026-11-05)
+- **Telegram messages start with `WELLNESS:`** so the sender is clear in the family chat, where Home Assistant, Unraid, Proxmox, Uptime Kuma and iCloud Dashboard also write. Change it with `TELEGRAM_PREFIX` (empty = no prefix). Nothing else changes.
+
 ## v0.2.12 (2026-11-02)
 - **Reformer opens at 07:00**: on 2/11 the 05:01 attempt and the watching got HTTP 400 every 15 s until 07:00, and the booking went through at 07:00:08. The Wellness Town Reformer rule is now a single attempt at **07:00** (lead 300 ms, 120 s burst: it covers 07:00:00–07:02), without the 05:01 time.
 - **No attempts before the reported opening while watching**: when mywellness reports a future `bookingOpensOn`, watching no longer tries to book (places look free but booking answers HTTP 400) and shows "Prenotazioni aperte dalle …". The rule attempts are unchanged.
