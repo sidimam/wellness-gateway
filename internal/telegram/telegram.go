@@ -62,7 +62,7 @@ func (b *Bot) Send(text string, dedupe time.Duration) {
 }
 
 // Prefix apre ogni messaggio, così in chat si capisce chi scrive: in casa mandano messaggi anche Home Assistant, Unraid,
-// Proxmox, Uptime Kuma e iCloud Dashboard. Si cambia con TELEGRAM_PREFIX (vuota = nessun prefisso).
+// Proxmox, Uptime Kuma e iCloud Control. Si cambia con TELEGRAM_PREFIX (vuota = nessun prefisso).
 func Prefix() string {
 	if v, ok := os.LookupEnv("TELEGRAM_PREFIX"); ok {
 		return strings.TrimSpace(v)
